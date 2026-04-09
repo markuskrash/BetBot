@@ -65,7 +65,12 @@ class FootballPollingService:
 
     async def run_forever(self) -> None:
         while True:
-            await self.poll_once()
+            try:
+                await self.poll_once()
+            except Exception:
+                logger.exception("Football poll failed; retrying after backoff")
+                await asyncio.sleep(min(60, max(10, self.poll_seconds)))
+                continue
             logger.info("Sleeping for %s seconds before next poll", self.poll_seconds)
             await asyncio.sleep(self.poll_seconds)
 

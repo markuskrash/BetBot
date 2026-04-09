@@ -257,7 +257,12 @@ def _build_football_service(
     *,
     notify_telegram: bool,
 ) -> FootballPollingService:
-    api_key = os.getenv("ODDS_API_KEY")
+    api_key = (os.getenv("ODDS_API_KEY") or "").strip()
+    if not api_key:
+        raise RuntimeError(
+            "ODDS_API_KEY is missing or empty. Set it in the host environment "
+            "(e.g. Railway → Variables → ODDS_API_KEY)."
+        )
     client = OddsApiClient(api_key=api_key)
     engine = FootballConsensusEngine(
         EngineConfig(bankroll=bankroll, min_edge=min_edge, min_expected_value=min_ev)

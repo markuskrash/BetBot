@@ -45,7 +45,8 @@ class FootballEventOdds:
 
 class OddsApiClient:
     def __init__(self, api_key: str | None = None, timeout: int = 20) -> None:
-        self.api_key = api_key or os.getenv("ODDS_API_KEY", "")
+        raw = api_key if api_key is not None else os.getenv("ODDS_API_KEY", "")
+        self.api_key = raw.strip() if isinstance(raw, str) else ""
         self.timeout = timeout
 
     def get_events(
