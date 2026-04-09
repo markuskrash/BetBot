@@ -8,7 +8,7 @@ import os
 from pathlib import Path
 from typing import Sequence
 
-from .config import EngineConfig, FeedConfig
+from .config import DEFAULT_MIN_EDGE, DEFAULT_MIN_EV, EngineConfig, FeedConfig
 from .engine import ProbabilityModel
 from .football_api import OddsApiClient
 from .football_engine import FootballConsensusEngine
@@ -47,8 +47,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     football_scan = subparsers.add_parser("football-scan", help="Fetch football odds from free API and print recommendations")
     football_scan.add_argument("--bankroll", type=float, default=100.0)
-    football_scan.add_argument("--min-edge", type=float, default=EngineConfig.min_edge)
-    football_scan.add_argument("--min-ev", type=float, default=EngineConfig.min_expected_value)
+    football_scan.add_argument("--min-edge", type=float, default=DEFAULT_MIN_EDGE)
+    football_scan.add_argument("--min-ev", type=float, default=DEFAULT_MIN_EV)
     football_scan.add_argument("--target-bookmaker", default="Bet365")
     football_scan.add_argument("--bookmakers", default="Bet365,Unibet")
     football_scan.add_argument("--limit", type=int, default=10)
@@ -61,8 +61,8 @@ def build_parser() -> argparse.ArgumentParser:
     football_serve.add_argument("--host", default="127.0.0.1")
     football_serve.add_argument("--port", type=int, default=_default_http_port())
     football_serve.add_argument("--bankroll", type=float, default=100.0)
-    football_serve.add_argument("--min-edge", type=float, default=EngineConfig.min_edge)
-    football_serve.add_argument("--min-ev", type=float, default=EngineConfig.min_expected_value)
+    football_serve.add_argument("--min-edge", type=float, default=DEFAULT_MIN_EDGE)
+    football_serve.add_argument("--min-ev", type=float, default=DEFAULT_MIN_EV)
     football_serve.add_argument("--target-bookmaker", default="Bet365")
     football_serve.add_argument("--bookmakers", default="Bet365,Unibet")
     football_serve.add_argument("--limit", type=int, default=10)
