@@ -742,3 +742,7 @@
 2026-04-10 02:04:21 | INFO | bb_bet_signal.football_service | Evaluated odds events=10 recommendations=0
 2026-04-10 02:04:21 | INFO | bb_bet_signal.football_service | Telegram notifications sent=0
 2026-04-10 02:04:21 | INFO | bb_bet_signal.football_service | Sleeping for 120 seconds before next poll
+2026-04-10 02:06:21 | INFO | bb_bet_signal.football_service | Resolved bookmakers target=Bet365 comparison=Unibet
+2026-04-10 02:06:21 | INFO | bb_bet_signal.football_service | Polling football odds bookmakers=Bet365,Unibet limit=10
+2026-04-10 02:06:22 | INFO | bb_bet_signal.football_service | Fetched events count=10
+2026-04-10 02:06:22 | INFO | bb_bet_signal.football_service | Evaluated odds events=10 recommendations=1

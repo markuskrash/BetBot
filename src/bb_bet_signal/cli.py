@@ -20,18 +20,28 @@ from .service import ApiServer, SignalService
 from .telegram import TelegramNotifier
 
 
+def _default_http_port() -> int:
+    raw = os.environ.get("PORT")
+    if raw:
+        try:
+            return int(raw)
+        except ValueError:
+            pass
+    return 8080
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Realtime betting signal engine")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     simulate = subparsers.add_parser("simulate", help="Run demo feed and print live recommendations")
     simulate.add_argument("--ticks", type=int, default=5, help="Number of snapshots per match to process")
-    simulate.add_argument("--bankroll", type=float, default=000.0, help="Bankroll for stake sizing")
+    simulate.add_argument("--bankroll", type=float, default=100.0, help="Bankroll for stake sizing")
     simulate.add_argument("--feed-file", type=Path, help="Optional jsonl file with market snapshots")
 
     serve = subparsers.add_parser("serve", help="Run HTTP API")
     serve.add_argument("--host", default="127.0.0.1")
-    serve.add_argument("--port", type=int, default=8080)
+    serve.add_argument("--port", type=int, default=_default_http_port())
     serve.add_argument("--bankroll", type=float, default=100.0)
     serve.add_argument("--feed-file", type=Path, help="Optional jsonl file with market snapshots")
 
@@ -49,7 +59,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     football_serve = subparsers.add_parser("football-serve", help="Run football polling service and HTTP API")
     football_serve.add_argument("--host", default="127.0.0.1")
-    football_serve.add_argument("--port", type=int, default=8080)
+    football_serve.add_argument("--port", type=int, default=_default_http_port())
     football_serve.add_argument("--bankroll", type=float, default=100.0)
     football_serve.add_argument("--min-edge", type=float, default=EngineConfig.min_edge)
     football_serve.add_argument("--min-ev", type=float, default=EngineConfig.min_expected_value)
