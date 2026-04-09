@@ -1,0 +1,20 @@
+2026-04-09 21:44:27 | INFO | __main__ | Starting football scan target=Bet365 bookmakers=Bet365,Unibet limit=10 notify_telegram=False
+2026-04-09 21:44:27 | INFO | __main__ | Football service configured db=data/football_odds.sqlite3 target=Bet365 comparison=Unibet telegram=False
+2026-04-09 21:44:27 | INFO | bb_bet_signal.football_service | Resolved bookmakers target=Bet365 comparison=Unibet
+2026-04-09 21:44:27 | INFO | bb_bet_signal.football_service | Polling football odds bookmakers=Bet365,Unibet limit=10
+2026-04-09 21:44:28 | INFO | bb_bet_signal.football_service | Fetched events count=10
+2026-04-09 21:44:29 | INFO | bb_bet_signal.football_service | Evaluated odds events=10 recommendations=0
+2026-04-09 21:44:29 | INFO | __main__ | Football scan completed recommendations=0
+2026-04-09 21:52:22 | INFO | __main__ | Starting football scan target=Bet365 bookmakers=Bet365,Unibet limit=10 notify_telegram=False
+2026-04-09 21:52:22 | INFO | __main__ | Football service configured db=data/football_odds.sqlite3 target=Bet365 comparison=Unibet telegram=False
+2026-04-09 21:52:23 | INFO | bb_bet_signal.football_service | Resolved bookmakers target=Bet365 comparison=Unibet
+2026-04-09 21:52:23 | INFO | bb_bet_signal.football_service | Polling football odds bookmakers=Bet365,Unibet limit=10
+2026-04-09 21:52:23 | INFO | bb_bet_signal.football_service | Fetched events count=10
+2026-04-09 21:52:24 | INFO | bb_bet_signal.football_service | Evaluated odds events=10 recommendations=0
+2026-04-09 21:52:24 | INFO | __main__ | Football scan completed recommendations=0
+2026-04-09 21:52:35 | INFO | __main__ | Starting football scan target=Bet365 bookmakers=Bet365,Unibet limit=100 notify_telegram=False
+2026-04-09 21:52:35 | INFO | __main__ | Football service configured db=data/football_odds.sqlite3 target=Bet365 comparison=Unibet telegram=False
+2026-04-09 21:52:36 | INFO | bb_bet_signal.football_service | Resolved bookmakers target=Bet365 comparison=Unibet
+2026-04-09 21:52:36 | INFO | bb_bet_signal.football_service | Polling football odds bookmakers=Bet365,Unibet limit=100
+2026-04-09 21:52:37 | INFO | bb_bet_signal.football_service | Fetched events count=100
+2026-04-09 21:52:37 | ERROR | bb_bet_signal.football_api | Odds API error path=/odds/multi code=400 message={"error":"Maximum 10 eventIds allowed"}

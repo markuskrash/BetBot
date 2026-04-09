@@ -1,0 +1,51 @@
+2026-04-09 21:36:55 | DEBUG | asyncio | Using selector: KqueueSelector
+2026-04-09 21:36:55 | INFO | __main__ | Starting football scan target=Bet365 bookmakers=Bet365,Unibet limit=3 notify_telegram=False
+2026-04-09 21:36:55 | INFO | __main__ | Football service configured db=data/football_odds.sqlite3 target=Bet365 comparison=Unibet telegram=False
+2026-04-09 21:36:55 | DEBUG | bb_bet_signal.football_api | Odds API request path=/bookmakers params={}
+2026-04-09 21:36:55 | DEBUG | bb_bet_signal.football_api | Odds API response path=/bookmakers received
+2026-04-09 21:36:55 | DEBUG | bb_bet_signal.football_api | Odds API request path=/bookmakers/selected params={}
+2026-04-09 21:36:56 | DEBUG | bb_bet_signal.football_api | Odds API response path=/bookmakers/selected received
+2026-04-09 21:36:56 | INFO | bb_bet_signal.football_service | Resolved bookmakers target=Bet365 comparison=Unibet
+2026-04-09 21:36:56 | INFO | bb_bet_signal.football_service | Polling football odds bookmakers=Bet365,Unibet limit=3
+2026-04-09 21:36:56 | DEBUG | bb_bet_signal.football_api | Odds API request path=/events params={'sport': 'football', 'limit': '3'}
+2026-04-09 21:36:56 | DEBUG | bb_bet_signal.football_api | Odds API response path=/events received
+2026-04-09 21:36:56 | INFO | bb_bet_signal.football_service | Fetched events count=3
+2026-04-09 21:36:56 | DEBUG | bb_bet_signal.football_api | Odds API request path=/odds/multi params={'eventIds': '70479812,61493857,69683864', 'bookmakers': 'Bet365,Unibet'}
+2026-04-09 21:36:57 | DEBUG | bb_bet_signal.football_api | Odds API response path=/odds/multi received
+2026-04-09 21:36:57 | INFO | bb_bet_signal.football_service | Evaluated odds events=0 recommendations=0
+2026-04-09 21:36:57 | INFO | __main__ | Football scan completed recommendations=0
+2026-04-09 21:38:05 | INFO | __main__ | Starting football scan target=Bet365 bookmakers=Bet365,Unibet limit=5 notify_telegram=False
+2026-04-09 21:38:05 | INFO | __main__ | Football service configured db=data/football_odds.sqlite3 target=Bet365 comparison=Unibet telegram=False
+2026-04-09 21:38:06 | INFO | bb_bet_signal.football_service | Resolved bookmakers target=Bet365 comparison=Unibet
+2026-04-09 21:38:06 | INFO | bb_bet_signal.football_service | Polling football odds bookmakers=Bet365,Unibet limit=5
+2026-04-09 21:38:06 | INFO | bb_bet_signal.football_service | Fetched events count=5
+2026-04-09 21:38:07 | INFO | bb_bet_signal.football_service | Evaluated odds events=5 recommendations=0
+2026-04-09 21:38:07 | INFO | __main__ | Football scan completed recommendations=0
+2026-04-09 21:39:22 | INFO | __main__ | Starting football scan target=Bet365 bookmakers=Bet365,Unibet limit=5 notify_telegram=False
+2026-04-09 21:39:22 | INFO | __main__ | Football service configured db=data/football_odds.sqlite3 target=Bet365 comparison=Unibet telegram=False
+2026-04-09 21:39:22 | INFO | bb_bet_signal.football_service | Resolved bookmakers target=Bet365 comparison=Unibet
+2026-04-09 21:39:22 | INFO | bb_bet_signal.football_service | Polling football odds bookmakers=Bet365,Unibet limit=5
+2026-04-09 21:39:23 | INFO | bb_bet_signal.football_service | Fetched events count=5
+2026-04-09 21:39:28 | INFO | bb_bet_signal.football_service | Evaluated odds events=5 recommendations=0
+2026-04-09 21:39:28 | INFO | __main__ | Football scan completed recommendations=0
+2026-04-09 21:42:41 | INFO | __main__ | Starting football scan target=Bet365 bookmakers=Bet365,Unibet limit=3 notify_telegram=False
+2026-04-09 21:42:41 | INFO | __main__ | Football service configured db=data/football_odds.sqlite3 target=Bet365 comparison=Unibet telegram=False
+2026-04-09 21:42:42 | INFO | bb_bet_signal.football_service | Resolved bookmakers target=Bet365 comparison=Unibet
+2026-04-09 21:42:42 | INFO | bb_bet_signal.football_service | Polling football odds bookmakers=Bet365,Unibet limit=3
+2026-04-09 21:42:42 | INFO | bb_bet_signal.football_service | Fetched events count=3
+2026-04-09 21:42:43 | INFO | bb_bet_signal.football_service | Evaluated odds events=3 recommendations=0
+2026-04-09 21:42:43 | INFO | __main__ | Football scan completed recommendations=0
+2026-04-09 21:43:25 | INFO | __main__ | Starting football scan target=Bet365 bookmakers=Bet365,Unibet limit=1 notify_telegram=False
+2026-04-09 21:43:25 | INFO | __main__ | Football service configured db=data/football_odds.sqlite3 target=Bet365 comparison=Unibet telegram=False
+2026-04-09 21:43:26 | INFO | bb_bet_signal.football_service | Resolved bookmakers target=Bet365 comparison=Unibet
+2026-04-09 21:43:26 | INFO | bb_bet_signal.football_service | Polling football odds bookmakers=Bet365,Unibet limit=1
+2026-04-09 21:43:26 | INFO | bb_bet_signal.football_service | Fetched events count=1
+2026-04-09 21:43:27 | INFO | bb_bet_signal.football_service | Evaluated odds events=1 recommendations=1
+2026-04-09 21:43:27 | INFO | __main__ | Football scan completed recommendations=1
+2026-04-09 21:53:48 | INFO | __main__ | Starting football scan target=Bet365 bookmakers=Bet365,Unibet limit=10 notify_telegram=False
+2026-04-09 21:53:48 | INFO | __main__ | Football service configured db=data/football_odds.sqlite3 target=Bet365 comparison=Unibet telegram=False
+2026-04-09 21:53:49 | INFO | bb_bet_signal.football_service | Resolved bookmakers target=Bet365 comparison=Unibet
+2026-04-09 21:53:49 | INFO | bb_bet_signal.football_service | Polling football odds bookmakers=Bet365,Unibet limit=10
+2026-04-09 21:53:49 | INFO | bb_bet_signal.football_service | Fetched events count=10
+2026-04-09 21:53:51 | INFO | bb_bet_signal.football_service | Evaluated odds events=10 recommendations=0
+2026-04-09 21:53:51 | INFO | __main__ | Football scan completed recommendations=0
