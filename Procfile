@@ -1,1 +1,1 @@
-web: bb-bet football-serve --host 0.0.0.0 --notify-telegram
+web: bb-bet football-serve --host 0.0.0.0 --notify-telegram --poll-seconds 120
