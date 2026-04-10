@@ -11,4 +11,4 @@ COPY src ./src
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel \
     && pip install --no-cache-dir .
 
-CMD ["bb-bet", "football-serve", "--host", "0.0.0.0"]
+CMD ["bb-bet", "football-serve", "--host", "0.0.0.0", "-notify-telegram"]
