@@ -63,7 +63,7 @@ def build_parser() -> argparse.ArgumentParser:
     football_serve = subparsers.add_parser("football-serve", help="Run football polling service and HTTP API")
     football_serve.add_argument("--host", default="127.0.0.1")
     football_serve.add_argument("--port", type=int, default=_default_http_port())
-    football_serve.add_argument("--bankroll", type=float, default=100.0)
+    football_serve.add_argument("--bankroll", type=float, default=3500.0)
     football_serve.add_argument("--min-edge", type=float, default=DEFAULT_MIN_EDGE)
     football_serve.add_argument("--min-ev", type=float, default=DEFAULT_MIN_EV)
     football_serve.add_argument("--target-bookmaker", default="Bet365")
