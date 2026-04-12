@@ -42,7 +42,7 @@ class MoexStockService:
         self._latest: list[MoexSignal] = []
         self._lock = Lock()
         self._news_body_cache: dict[int, str] = {}
-        self._sent_signal_keys: set[str] = set()
+        self._last_sent_by_symbol: dict[str, MoexSignal] = {}
 
     async def poll_once(self) -> list[MoexSignal]:
         logger.info("Polling MOEX symbols=%s", ",".join(self.symbols))
@@ -132,11 +132,11 @@ class MoexStockService:
         for signal in signals:
             if signal.action not in {"BUY", "SELL"}:
                 continue
-            signature = f"{signal.symbol}|{signal.action}|{signal.last_price:.2f}|{signal.score:.3f}"
-            if signature in self._sent_signal_keys:
+            previous = self._last_sent_by_symbol.get(signal.symbol)
+            if previous is not None and not _is_significant_change(previous, signal):
                 continue
             self.notifier.send_message(_format_stock_signal(signal))
-            self._sent_signal_keys.add(signature)
+            self._last_sent_by_symbol[signal.symbol] = signal
             sent += 1
         return sent
 
@@ -157,3 +157,33 @@ def _format_stock_signal(signal: MoexSignal) -> str:
             f"Events used: {signal.event_count}",
         ]
     )
+
+
+def _is_significant_change(previous: MoexSignal, current: MoexSignal) -> bool:
+    if previous.action != current.action:
+        return True
+
+    # Same ticker and direction: notify only when there is material drift.
+    price_change = abs(current.last_price - previous.last_price) / max(previous.last_price, 1e-6)
+    score_change = abs(current.score - previous.score)
+    confidence_change = abs(current.confidence - previous.confidence)
+
+    # Also trigger when risk levels changed materially.
+    stop_change = _relative_change(previous.stop_loss, current.stop_loss)
+    take_change = _relative_change(previous.take_profit, current.take_profit)
+
+    return any(
+        [
+            price_change >= 0.015,      # 1.5%
+            score_change >= 0.12,       # model drift
+            confidence_change >= 0.10,  # confidence moved by 10pp
+            stop_change >= 0.02,        # SL shifted by 2%
+            take_change >= 0.03,        # TP shifted by 3%
+        ]
+    )
+
+
+def _relative_change(previous: float | None, current: float | None) -> float:
+    if previous is None or current is None:
+        return 1.0 if previous != current else 0.0
+    return abs(current - previous) / max(abs(previous), 1e-6)
