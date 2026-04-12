@@ -47,6 +47,13 @@ class MoexSignalEngine:
         else:
             position_share = 0.0
 
+        stop_loss, take_profit = _risk_levels(
+            action=action,
+            last_price=quote.last,
+            daily_vol=daily_vol,
+            confidence=confidence,
+        )
+
         reasons = technical_reasons + event_reasons
         if not reasons:
             reasons = ["No strong technical or event deviations."]
@@ -63,6 +70,8 @@ class MoexSignalEngine:
             event_score=event_score,
             event_count=len(events),
             generated_at=datetime.now(UTC),
+            stop_loss=stop_loss,
+            take_profit=take_profit,
             reasons=reasons[:5],
         )
 
@@ -172,6 +181,31 @@ def _daily_volatility(closes: list[float]) -> float:
         return stdev(returns)
     except StatisticsError:
         return 0.02
+
+
+def _risk_levels(
+    *,
+    action: str,
+    last_price: float,
+    daily_vol: float,
+    confidence: float,
+) -> tuple[float | None, float | None]:
+    if action not in {"BUY", "SELL"} or last_price <= 0:
+        return None, None
+
+    # Volatility-aware stop and RR-based target.
+    base_stop = _clamp(daily_vol * 2.2, 0.012, 0.08)
+    confidence_adjustment = 1.0 - _clamp(confidence - 0.5, 0.0, 0.4) * 0.35
+    stop_pct = _clamp(base_stop * confidence_adjustment, 0.01, 0.08)
+    take_pct = _clamp(stop_pct * 1.85, 0.02, 0.16)
+
+    if action == "BUY":
+        stop_loss = last_price * (1.0 - stop_pct)
+        take_profit = last_price * (1.0 + take_pct)
+    else:
+        stop_loss = last_price * (1.0 + stop_pct)
+        take_profit = last_price * (1.0 - take_pct)
+    return round(stop_loss, 2), round(take_profit, 2)
 
 
 def _clamp(value: float, low: float, high: float) -> float:

@@ -99,6 +99,8 @@ class MoexSignalRepository:
                     last_price REAL NOT NULL,
                     expected_move_pct REAL NOT NULL,
                     position_share REAL NOT NULL,
+                    stop_loss REAL,
+                    take_profit REAL,
                     technical_score REAL NOT NULL,
                     event_score REAL NOT NULL,
                     event_count INTEGER NOT NULL,
@@ -107,6 +109,11 @@ class MoexSignalRepository:
                 )
                 """
             )
+            columns = {row[1] for row in connection.execute("PRAGMA table_info(moex_signals)")}
+            if "stop_loss" not in columns:
+                connection.execute("ALTER TABLE moex_signals ADD COLUMN stop_loss REAL")
+            if "take_profit" not in columns:
+                connection.execute("ALTER TABLE moex_signals ADD COLUMN take_profit REAL")
 
     def persist_signals(self, signals: list[MoexSignal]) -> None:
         with self._connect() as connection:
@@ -115,8 +122,9 @@ class MoexSignalRepository:
                     """
                     INSERT INTO moex_signals (
                         symbol, action, score, confidence, last_price, expected_move_pct,
-                        position_share, technical_score, event_score, event_count, reasons, generated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        position_share, stop_loss, take_profit, technical_score,
+                        event_score, event_count, reasons, generated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         signal.symbol,
@@ -126,6 +134,8 @@ class MoexSignalRepository:
                         signal.last_price,
                         signal.expected_move_pct,
                         signal.position_share,
+                        signal.stop_loss,
+                        signal.take_profit,
                         signal.technical_score,
                         signal.event_score,
                         signal.event_count,

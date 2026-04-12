@@ -142,6 +142,8 @@ class MoexStockService:
 
 
 def _format_stock_signal(signal: MoexSignal) -> str:
+    stop_line = f"Stop loss: {signal.stop_loss:.2f}" if signal.stop_loss is not None else "Stop loss: n/a"
+    take_line = f"Take profit: {signal.take_profit:.2f}" if signal.take_profit is not None else "Take profit: n/a"
     return "\n".join(
         [
             f"MOEX {signal.symbol}: {signal.action}",
@@ -150,6 +152,8 @@ def _format_stock_signal(signal: MoexSignal) -> str:
             f"Confidence: {signal.confidence:.0%}",
             f"Expected move: {signal.expected_move_pct:.2%}",
             f"Position: {signal.position_share:.2%}",
+            stop_line,
+            take_line,
             f"Events used: {signal.event_count}",
         ]
     )

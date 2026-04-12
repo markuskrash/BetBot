@@ -20,6 +20,7 @@ For MOEX stocks:
 - fetches candles and quote data from MOEX ISS;
 - pulls MOEX site news and links events to tickers;
 - scores technical trend + event sentiment into `BUY/HOLD/SELL`;
+- computes volatility-based `stop_loss` and `take_profit` for `BUY/SELL`;
 - stores generated stock signals in local `SQLite`;
 - can push actionable `BUY/SELL` alerts to Telegram.
 
