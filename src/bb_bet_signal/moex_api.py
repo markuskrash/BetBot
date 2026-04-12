@@ -6,7 +6,7 @@ import logging
 import re
 from datetime import UTC, date, datetime
 from typing import Any
-from urllib.error import HTTPError
+from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import urlopen
 
@@ -120,6 +120,9 @@ class MoexApiClient:
             message = body or exc.reason or f"HTTP {exc.code}"
             logger.error("MOEX request failed path=%s code=%s message=%s", path, exc.code, message)
             raise RuntimeError(f"MOEX ISS request failed for {path}: {exc.code} {message}") from exc
+        except URLError as exc:
+            logger.error("MOEX request failed path=%s error=%s", path, exc)
+            raise RuntimeError(f"MOEX ISS network error for {path}: {exc}") from exc
 
 
 def _table_rows(payload: dict[str, Any], key: str) -> list[dict[str, Any]]:

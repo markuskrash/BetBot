@@ -46,19 +46,26 @@ class MoexStockService:
 
     async def poll_once(self) -> list[MoexSignal]:
         logger.info("Polling MOEX symbols=%s", ",".join(self.symbols))
-        events_by_symbol = self._fetch_events()
+        try:
+            events_by_symbol = self._fetch_events()
+        except Exception:
+            logger.exception("Failed to fetch MOEX events; continuing without event layer this cycle")
+            events_by_symbol = {symbol: [] for symbol in self.symbols}
         until = date.today()
         since = until - timedelta(days=self.history_days)
 
         signals: list[MoexSignal] = []
         for symbol in self.symbols:
-            quote = self.client.get_quote(symbol)
-            if quote is None:
-                logger.warning("No quote data for %s", symbol)
-                continue
-            candles = self.client.get_daily_candles(symbol, from_date=since, till_date=until)
-            signal = self.engine.build_signal(symbol, quote, candles, events_by_symbol.get(symbol, []))
-            signals.append(signal)
+            try:
+                quote = self.client.get_quote(symbol)
+                if quote is None:
+                    logger.warning("No quote data for %s", symbol)
+                    continue
+                candles = self.client.get_daily_candles(symbol, from_date=since, till_date=until)
+                signal = self.engine.build_signal(symbol, quote, candles, events_by_symbol.get(symbol, []))
+                signals.append(signal)
+            except Exception:
+                logger.exception("Failed to build signal for %s; skipping symbol for this cycle", symbol)
 
         signals.sort(key=lambda item: (item.action != "BUY", -item.score))
         if self.repository is not None:
@@ -73,7 +80,12 @@ class MoexStockService:
 
     async def run_forever(self) -> None:
         while True:
-            await self.poll_once()
+            try:
+                await self.poll_once()
+            except Exception:
+                logger.exception("MOEX poll cycle failed; retrying after backoff")
+                await asyncio.sleep(min(60, max(10, self.poll_seconds)))
+                continue
             logger.info("MOEX sleep for %s seconds", self.poll_seconds)
             await asyncio.sleep(self.poll_seconds)
 
@@ -133,12 +145,44 @@ class MoexStockService:
             if signal.action not in {"BUY", "SELL"}:
                 continue
             previous = self._last_sent_by_symbol.get(signal.symbol)
+            if previous is None and self.repository is not None:
+                previous = self._load_persisted_signal(signal.symbol)
             if previous is not None and not _is_significant_change(previous, signal):
                 continue
             self.notifier.send_message(_format_stock_signal(signal))
             self._last_sent_by_symbol[signal.symbol] = signal
+            if self.repository is not None:
+                self.repository.upsert_notification_state(signal)
             sent += 1
         return sent
+
+    def _load_persisted_signal(self, symbol: str) -> MoexSignal | None:
+        if self.repository is None:
+            return None
+        state = self.repository.get_notification_state(symbol)
+        if state is None:
+            return None
+        raw_time = state.get("sent_at")
+        try:
+            generated_at = datetime.fromisoformat(str(raw_time)) if raw_time else datetime.now(UTC)
+        except ValueError:
+            generated_at = datetime.now(UTC)
+        return MoexSignal(
+            symbol=symbol,
+            action=str(state.get("action") or "HOLD"),
+            score=float(state.get("score") or 0.0),
+            confidence=float(state.get("confidence") or 0.0),
+            last_price=float(state.get("last_price") or 0.0),
+            expected_move_pct=0.0,
+            position_share=0.0,
+            technical_score=0.0,
+            event_score=0.0,
+            event_count=0,
+            generated_at=generated_at,
+            stop_loss=float(state["stop_loss"]) if state.get("stop_loss") is not None else None,
+            take_profit=float(state["take_profit"]) if state.get("take_profit") is not None else None,
+            reasons=[],
+        )
 
 
 def _format_stock_signal(signal: MoexSignal) -> str:

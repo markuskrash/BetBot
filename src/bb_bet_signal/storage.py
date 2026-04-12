@@ -114,6 +114,20 @@ class MoexSignalRepository:
                 connection.execute("ALTER TABLE moex_signals ADD COLUMN stop_loss REAL")
             if "take_profit" not in columns:
                 connection.execute("ALTER TABLE moex_signals ADD COLUMN take_profit REAL")
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS moex_notification_state (
+                    symbol TEXT PRIMARY KEY,
+                    action TEXT NOT NULL,
+                    last_price REAL NOT NULL,
+                    score REAL NOT NULL,
+                    confidence REAL NOT NULL,
+                    stop_loss REAL,
+                    take_profit REAL,
+                    sent_at TEXT NOT NULL
+                )
+                """
+            )
 
     def persist_signals(self, signals: list[MoexSignal]) -> None:
         with self._connect() as connection:
@@ -143,3 +157,53 @@ class MoexSignalRepository:
                         signal.generated_at.isoformat(),
                     ),
                 )
+
+    def get_notification_state(self, symbol: str) -> dict[str, float | str | None] | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT action, last_price, score, confidence, stop_loss, take_profit, sent_at
+                FROM moex_notification_state
+                WHERE symbol = ?
+                """,
+                (symbol,),
+            ).fetchone()
+        if row is None:
+            return None
+        return {
+            "action": row[0],
+            "last_price": row[1],
+            "score": row[2],
+            "confidence": row[3],
+            "stop_loss": row[4],
+            "take_profit": row[5],
+            "sent_at": row[6],
+        }
+
+    def upsert_notification_state(self, signal: MoexSignal) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO moex_notification_state (
+                    symbol, action, last_price, score, confidence, stop_loss, take_profit, sent_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(symbol) DO UPDATE SET
+                    action=excluded.action,
+                    last_price=excluded.last_price,
+                    score=excluded.score,
+                    confidence=excluded.confidence,
+                    stop_loss=excluded.stop_loss,
+                    take_profit=excluded.take_profit,
+                    sent_at=excluded.sent_at
+                """,
+                (
+                    signal.symbol,
+                    signal.action,
+                    signal.last_price,
+                    signal.score,
+                    signal.confidence,
+                    signal.stop_loss,
+                    signal.take_profit,
+                    signal.generated_at.isoformat(),
+                ),
+            )
