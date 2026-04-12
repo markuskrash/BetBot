@@ -14,8 +14,11 @@ from .football_api import OddsApiClient
 from .football_engine import FootballConsensusEngine
 from .football_service import FootballPollingService
 from .logging_setup import setup_logging
+from .moex_api import MoexApiClient
+from .moex_engine import MoexSignalEngine
+from .moex_service import MoexStockService
 from .providers import DemoRealtimeFeed, JsonlRealtimeFeed
-from .storage import SnapshotRepository
+from .storage import MoexSignalRepository, SnapshotRepository
 from .service import ApiServer, SignalService
 from .telegram import TelegramNotifier
 
@@ -72,6 +75,30 @@ def build_parser() -> argparse.ArgumentParser:
     football_serve.add_argument("--log-file", type=Path, default=Path("logs/football-serve.log"))
     football_serve.add_argument("--log-level", default="INFO")
 
+    moex_scan = subparsers.add_parser("moex-scan", help="Fetch MOEX stock signals and print recommendations")
+    moex_scan.add_argument("--symbols", default="SBER,GAZP,LKOH,ROSN,NVTK,YDEX,T")
+    moex_scan.add_argument("--history-days", type=int, default=180)
+    moex_scan.add_argument("--news-limit", type=int, default=150)
+    moex_scan.add_argument("--news-window-hours", type=int, default=72)
+    moex_scan.add_argument("--poll-seconds", type=int, default=120)
+    moex_scan.add_argument("--db-path", type=Path, default=Path("data/moex_signals.sqlite3"))
+    moex_scan.add_argument("--notify-telegram", action="store_true")
+    moex_scan.add_argument("--log-file", type=Path, default=Path("logs/moex-scan.log"))
+    moex_scan.add_argument("--log-level", default="INFO")
+
+    moex_serve = subparsers.add_parser("moex-serve", help="Run MOEX stock polling service and HTTP API")
+    moex_serve.add_argument("--host", default="127.0.0.1")
+    moex_serve.add_argument("--port", type=int, default=8082)
+    moex_serve.add_argument("--symbols", default="SBER,GAZP,LKOH,ROSN,NVTK,YDEX,T")
+    moex_serve.add_argument("--history-days", type=int, default=180)
+    moex_serve.add_argument("--news-limit", type=int, default=150)
+    moex_serve.add_argument("--news-window-hours", type=int, default=72)
+    moex_serve.add_argument("--poll-seconds", type=int, default=120)
+    moex_serve.add_argument("--db-path", type=Path, default=Path("data/moex_signals.sqlite3"))
+    moex_serve.add_argument("--notify-telegram", action="store_true")
+    moex_serve.add_argument("--log-file", type=Path, default=Path("logs/moex-serve.log"))
+    moex_serve.add_argument("--log-level", default="INFO")
+
     return parser
 
 
@@ -118,6 +145,44 @@ def main(argv: Sequence[str] | None = None) -> None:
                     target_bookmaker=args.target_bookmaker,
                     bookmakers=_split_csv(args.bookmakers),
                     limit=args.limit,
+                    poll_seconds=args.poll_seconds,
+                    db_path=args.db_path,
+                    notify_telegram=args.notify_telegram,
+                )
+            )
+        except KeyboardInterrupt:
+            pass
+        except RuntimeError as exc:
+            raise SystemExit(str(exc)) from exc
+        return
+    if args.command == "moex-scan":
+        setup_logging(args.log_level, args.log_file)
+        try:
+            asyncio.run(
+                _moex_scan(
+                    symbols=_split_csv(args.symbols),
+                    history_days=args.history_days,
+                    news_limit=args.news_limit,
+                    news_window_hours=args.news_window_hours,
+                    poll_seconds=args.poll_seconds,
+                    db_path=args.db_path,
+                    notify_telegram=args.notify_telegram,
+                )
+            )
+        except RuntimeError as exc:
+            raise SystemExit(str(exc)) from exc
+        return
+    if args.command == "moex-serve":
+        setup_logging(args.log_level, args.log_file)
+        try:
+            asyncio.run(
+                _moex_serve(
+                    host=args.host,
+                    port=args.port,
+                    symbols=_split_csv(args.symbols),
+                    history_days=args.history_days,
+                    news_limit=args.news_limit,
+                    news_window_hours=args.news_window_hours,
                     poll_seconds=args.poll_seconds,
                     db_path=args.db_path,
                     notify_telegram=args.notify_telegram,
@@ -288,6 +353,106 @@ def _build_football_service(
         notifier=notifier,
         poll_seconds=poll_seconds,
         event_limit=limit,
+    )
+
+
+async def _moex_scan(
+    *,
+    symbols: list[str],
+    history_days: int,
+    news_limit: int,
+    news_window_hours: int,
+    poll_seconds: int,
+    db_path: Path,
+    notify_telegram: bool,
+) -> None:
+    logging.getLogger(__name__).info(
+        "Starting MOEX scan symbols=%s history_days=%s news_limit=%s window_hours=%s notify_telegram=%s",
+        ",".join(symbols),
+        history_days,
+        news_limit,
+        news_window_hours,
+        notify_telegram,
+    )
+    service = _build_moex_service(
+        symbols=symbols,
+        history_days=history_days,
+        news_limit=news_limit,
+        news_window_hours=news_window_hours,
+        poll_seconds=poll_seconds,
+        db_path=db_path,
+        notify_telegram=notify_telegram,
+    )
+    signals = await service.poll_once()
+    payload = [item.to_dict() for item in signals]
+    print(json.dumps(payload, ensure_ascii=False, indent=2))
+
+
+async def _moex_serve(
+    *,
+    host: str,
+    port: int,
+    symbols: list[str],
+    history_days: int,
+    news_limit: int,
+    news_window_hours: int,
+    poll_seconds: int,
+    db_path: Path,
+    notify_telegram: bool,
+) -> None:
+    logging.getLogger(__name__).info(
+        "Starting MOEX serve host=%s port=%s symbols=%s poll=%s",
+        host,
+        port,
+        ",".join(symbols),
+        poll_seconds,
+    )
+    service = _build_moex_service(
+        symbols=symbols,
+        history_days=history_days,
+        news_limit=news_limit,
+        news_window_hours=news_window_hours,
+        poll_seconds=poll_seconds,
+        db_path=db_path,
+        notify_telegram=notify_telegram,
+    )
+    server = ApiServer(service, host, port)
+    server.start()
+    print(f"MOEX HTTP API listening on http://{host}:{port}")
+    try:
+        await service.run_forever()
+    finally:
+        server.stop()
+
+
+def _build_moex_service(
+    *,
+    symbols: list[str],
+    history_days: int,
+    news_limit: int,
+    news_window_hours: int,
+    poll_seconds: int,
+    db_path: Path,
+    notify_telegram: bool,
+) -> MoexStockService:
+    if not symbols:
+        raise RuntimeError("At least one MOEX symbol is required")
+    client = MoexApiClient()
+    engine = MoexSignalEngine()
+    repository = MoexSignalRepository(db_path)
+    notifier = TelegramNotifier.from_env() if notify_telegram else None
+    if notify_telegram and notifier is None:
+        raise RuntimeError("TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID is not set")
+    return MoexStockService(
+        client,
+        engine,
+        symbols=symbols,
+        repository=repository,
+        notifier=notifier,
+        poll_seconds=poll_seconds,
+        history_days=history_days,
+        news_limit=news_limit,
+        news_window_hours=news_window_hours,
     )
 
 

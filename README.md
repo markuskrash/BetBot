@@ -1,6 +1,9 @@
 # BB Bet Signal
 
-Free-football betting signal MVP built around bookmaker consensus. The project does not auto-place bets. It pulls football odds, compares a target bookmaker against the rest of the market, and flags value opportunities for a few simple markets.
+This project now contains two bots:
+
+- football betting signal bot (Odds-API consensus);
+- MOEX stock signal bot with technical + event analysis.
 
 ## What it does
 
@@ -11,6 +14,14 @@ Free-football betting signal MVP built around bookmaker consensus. The project d
 - computes `edge`, `expected value`, and a capped fractional-Kelly stake;
 - stores every odds snapshot in local `SQLite`;
 - exposes recommendations through CLI and HTTP.
+
+For MOEX stocks:
+
+- fetches candles and quote data from MOEX ISS;
+- pulls MOEX site news and links events to tickers;
+- scores technical trend + event sentiment into `BUY/HOLD/SELL`;
+- stores generated stock signals in local `SQLite`;
+- can push actionable `BUY/SELL` alerts to Telegram.
 
 ## Supported markets
 
@@ -26,6 +37,7 @@ Official sources used for the integration:
 
 - [Odds-API.io docs](https://docs.odds-api.io/)
 - [Odds-API.io comparison example](https://docs.odds-api.io/examples/comparing-odds)
+- [MOEX ISS](https://iss.moex.com/iss/reference/)
 
 ## Setup
 
@@ -52,6 +64,8 @@ export ODDS_API_KEY="your_key"
 ```
 
 ## Run
+
+### Football bot
 
 Print a one-time scan:
 
@@ -87,6 +101,39 @@ curl http://127.0.0.1:8080/health
 curl http://127.0.0.1:8080/recommendations
 ```
 
+### MOEX stock bot
+
+One-time stock scan:
+
+```bash
+cd /Users/markuskrash/Projects/BB
+PYTHONPATH=src python3 -m bb_bet_signal.cli moex-scan \
+  --symbols SBER,GAZP,LKOH,ROSN,NVTK,YDEX,T \
+  --news-window-hours 72 \
+  --notify-telegram \
+  --log-file logs/moex-scan.log
+```
+
+Polling mode with API and 2-minute updates:
+
+```bash
+cd /Users/markuskrash/Projects/BB
+PYTHONPATH=src python3 -m bb_bet_signal.cli moex-serve \
+  --host 127.0.0.1 \
+  --port 8082 \
+  --symbols SBER,GAZP,LKOH,ROSN,NVTK,YDEX,T \
+  --poll-seconds 120 \
+  --notify-telegram \
+  --log-file logs/moex-serve.log
+```
+
+Then read:
+
+```bash
+curl http://127.0.0.1:8082/health
+curl http://127.0.0.1:8082/recommendations
+```
+
 ## Telegram bot
 
 1. Create a bot in [@BotFather](https://t.me/BotFather) and copy the token.
@@ -107,15 +154,19 @@ The notifier only sends new signals and suppresses duplicates with the same even
 Odds snapshots are stored in:
 
 - `data/football_odds.sqlite3`
+- `data/moex_signals.sqlite3`
 
 Logs are written to:
 
 - `logs/football-scan.log`
 - `logs/football-serve.log`
+- `logs/moex-scan.log`
+- `logs/moex-serve.log`
 
 Table:
 
 - `odds_snapshots`
+- `moex_signals`
 
 ## Local verification
 

@@ -67,3 +67,59 @@ class Recommendation:
         payload = asdict(self)
         payload["generated_at"] = self.generated_at.isoformat()
         return payload
+
+
+@dataclass(slots=True)
+class MoexCandle:
+    open: float
+    close: float
+    high: float
+    low: float
+    value: float
+    volume: float
+    begin: datetime
+    end: datetime
+
+
+@dataclass(slots=True)
+class MoexQuote:
+    symbol: str
+    board: str
+    last: float
+    prev_price: float
+    change_pct: float
+    trades: int
+    volume: float
+    turnover: float
+    updated_at: datetime
+
+
+@dataclass(slots=True)
+class MoexEvent:
+    news_id: int
+    published_at: datetime
+    title: str
+    body: str
+    symbols: list[str]
+    sentiment_score: float
+
+
+@dataclass(slots=True)
+class MoexSignal:
+    symbol: str
+    action: str
+    score: float
+    confidence: float
+    last_price: float
+    expected_move_pct: float
+    position_share: float
+    technical_score: float
+    event_score: float
+    event_count: int
+    generated_at: datetime
+    reasons: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        payload = asdict(self)
+        payload["generated_at"] = self.generated_at.isoformat()
+        return payload

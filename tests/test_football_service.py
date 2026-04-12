@@ -19,7 +19,14 @@ class FakeOddsApiClient:
     def get_selected_bookmakers(self):
         return ["Bet365", "Unibet", "Pinnacle"]
 
-    def get_events(self, *, sport: str = "football", limit: int = 10):
+    def get_events(
+        self,
+        *,
+        sport: str = "football",
+        limit: int = 10,
+        bookmaker: str | None = None,
+        status: str | None = None,
+    ):
         return [{"id": "42"}]
 
     def get_odds_multi(self, event_ids, bookmakers):

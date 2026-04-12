@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Iterator
 
 from .football_api import FootballEventOdds
+from .models import MoexSignal
 
 
 class SnapshotRepository:
@@ -68,3 +69,67 @@ class SnapshotRepository:
                                 timestamp,
                             ),
                         )
+
+
+class MoexSignalRepository:
+    def __init__(self, path: str | Path) -> None:
+        self.path = Path(path)
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self._init_db()
+
+    @contextmanager
+    def _connect(self) -> Iterator[sqlite3.Connection]:
+        connection = sqlite3.connect(self.path)
+        try:
+            yield connection
+            connection.commit()
+        finally:
+            connection.close()
+
+    def _init_db(self) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS moex_signals (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    symbol TEXT NOT NULL,
+                    action TEXT NOT NULL,
+                    score REAL NOT NULL,
+                    confidence REAL NOT NULL,
+                    last_price REAL NOT NULL,
+                    expected_move_pct REAL NOT NULL,
+                    position_share REAL NOT NULL,
+                    technical_score REAL NOT NULL,
+                    event_score REAL NOT NULL,
+                    event_count INTEGER NOT NULL,
+                    reasons TEXT NOT NULL,
+                    generated_at TEXT NOT NULL
+                )
+                """
+            )
+
+    def persist_signals(self, signals: list[MoexSignal]) -> None:
+        with self._connect() as connection:
+            for signal in signals:
+                connection.execute(
+                    """
+                    INSERT INTO moex_signals (
+                        symbol, action, score, confidence, last_price, expected_move_pct,
+                        position_share, technical_score, event_score, event_count, reasons, generated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        signal.symbol,
+                        signal.action,
+                        signal.score,
+                        signal.confidence,
+                        signal.last_price,
+                        signal.expected_move_pct,
+                        signal.position_share,
+                        signal.technical_score,
+                        signal.event_score,
+                        signal.event_count,
+                        " | ".join(signal.reasons),
+                        signal.generated_at.isoformat(),
+                    ),
+                )

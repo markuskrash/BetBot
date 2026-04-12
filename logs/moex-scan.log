@@ -1,0 +1,2 @@
+2026-04-12 21:33:45 | INFO | __main__ | Starting MOEX scan symbols=SBER,GAZP history_days=180 news_limit=50 window_hours=72 notify_telegram=False
+2026-04-12 21:33:45 | INFO | bb_bet_signal.moex_service | Polling MOEX symbols=SBER,GAZP
