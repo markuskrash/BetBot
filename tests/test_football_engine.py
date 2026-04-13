@@ -21,6 +21,10 @@ def build_event() -> FootballEventOdds:
         league="Serie A",
         starts_at=datetime.now(UTC),
         status="pending",
+        result_key=None,
+        home_score=None,
+        away_score=None,
+        is_final=False,
         bookmakers={
             "Bet365": [
                 FootballMarketQuote(

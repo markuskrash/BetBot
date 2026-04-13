@@ -100,7 +100,13 @@ Then read:
 ```bash
 curl http://127.0.0.1:8080/health
 curl http://127.0.0.1:8080/recommendations
+curl http://127.0.0.1:8080/expresses
 ```
+
+`football-scan` now prints both single bets and express bets:
+
+- `singles`
+- `expresses`
 
 ### MOEX stock bot
 

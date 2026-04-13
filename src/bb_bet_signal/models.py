@@ -60,7 +60,42 @@ class Recommendation:
     expected_value: float
     recommended_stake: float
     generated_at: datetime
+    starts_at: datetime | None = None
+    blocked_by_risk: bool = False
     bookmaker: str = ""
+    reasons: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        payload = asdict(self)
+        payload["generated_at"] = self.generated_at.isoformat()
+        if self.starts_at is not None:
+            payload["starts_at"] = self.starts_at.isoformat()
+        return payload
+
+
+@dataclass(slots=True)
+class ExpressLeg:
+    event_id: str
+    event_name: str
+    market_name: str
+    selection_key: str
+    selection_name: str
+    odds: float
+    model_probability: float
+
+
+@dataclass(slots=True)
+class ExpressRecommendation:
+    express_id: str
+    legs: list[ExpressLeg]
+    total_odds: float
+    implied_probability: float
+    model_probability: float
+    edge: float
+    expected_value: float
+    recommended_stake: float
+    generated_at: datetime
+    blocked_by_risk: bool = False
     reasons: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:

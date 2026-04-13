@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
-from .models import Recommendation
+from .models import ExpressRecommendation, Recommendation
 
 
 logger = logging.getLogger(__name__)
@@ -31,11 +31,23 @@ class TelegramNotifier:
     def notify_recommendations(self, recommendations: list[Recommendation], limit: int = 5) -> int:
         sent = 0
         for recommendation in recommendations[:limit]:
-            signature = _signature(recommendation)
+            signature = _signature_recommendation(recommendation)
             if signature in self._seen:
                 logger.debug("Skipping duplicate Telegram signal signature=%s", signature)
                 continue
             self.send_message(format_recommendation(recommendation))
+            self._seen.add(signature)
+            sent += 1
+        return sent
+
+    def notify_expresses(self, expresses: list[ExpressRecommendation], limit: int = 2) -> int:
+        sent = 0
+        for express in expresses[:limit]:
+            signature = _signature_express(express)
+            if signature in self._seen:
+                logger.debug("Skipping duplicate Telegram express signature=%s", signature)
+                continue
+            self.send_message(format_express_recommendation(express))
             self._seen.add(signature)
             sent += 1
         return sent
@@ -75,7 +87,25 @@ def format_recommendation(recommendation: Recommendation) -> str:
     )
 
 
-def _signature(recommendation: Recommendation) -> str:
+def format_express_recommendation(express: ExpressRecommendation) -> str:
+    legs_line = " + ".join(
+        f"{leg.event_name}: {leg.selection_name} ({leg.odds:.2f})"
+        for leg in express.legs
+    )
+    return "\n".join(
+        [
+            f"Express ({len(express.legs)} legs)",
+            legs_line,
+            f"Total odds: {express.total_odds:.2f}",
+            f"Model prob: {express.model_probability:.2%}",
+            f"Edge: {express.edge:.2%}",
+            f"EV: {express.expected_value:.2%}",
+            f"Stake: {express.recommended_stake:.2f}",
+        ]
+    )
+
+
+def _signature_recommendation(recommendation: Recommendation) -> str:
     return "|".join(
         [
             recommendation.event_id,
@@ -85,3 +115,11 @@ def _signature(recommendation: Recommendation) -> str:
             f"{recommendation.odds:.2f}",
         ]
     )
+
+
+def _signature_express(express: ExpressRecommendation) -> str:
+    legs_signature = ",".join(
+        f"{leg.event_id}:{leg.selection_key}:{leg.odds:.2f}"
+        for leg in express.legs
+    )
+    return "|".join([express.express_id, legs_signature, f"{express.total_odds:.2f}"])

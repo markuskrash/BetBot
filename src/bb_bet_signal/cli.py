@@ -8,10 +8,22 @@ import os
 from pathlib import Path
 from typing import Sequence
 
-from .config import DEFAULT_MIN_EDGE, DEFAULT_MIN_EV, EngineConfig, FeedConfig
+from .config import (
+    DEFAULT_DAILY_DD_LIMIT,
+    DEFAULT_MAX_BETS_PER_DAY,
+    DEFAULT_MAX_EXPRESS_SHARE,
+    DEFAULT_MAX_OPEN_BETS,
+    DEFAULT_MAX_SINGLE_SHARE,
+    DEFAULT_MIN_EDGE,
+    DEFAULT_MIN_EV,
+    EngineConfig,
+    FeedConfig,
+    FootballRiskConfig,
+)
 from .engine import ProbabilityModel
 from .football_api import OddsApiClient
 from .football_engine import FootballConsensusEngine
+from .football_risk import FootballRiskGovernor
 from .football_service import FootballPollingService
 from .logging_setup import setup_logging
 from .moex_api import MoexApiClient
@@ -54,6 +66,13 @@ def build_parser() -> argparse.ArgumentParser:
     football_scan.add_argument("--min-ev", type=float, default=DEFAULT_MIN_EV)
     football_scan.add_argument("--target-bookmaker", default="Bet365")
     football_scan.add_argument("--bookmakers", default="Bet365,Unibet")
+    football_scan.add_argument("--daily-dd-limit", type=float, default=DEFAULT_DAILY_DD_LIMIT)
+    football_scan.add_argument("--max-single-share", type=float, default=DEFAULT_MAX_SINGLE_SHARE)
+    football_scan.add_argument("--max-express-share", type=float, default=DEFAULT_MAX_EXPRESS_SHARE)
+    football_scan.add_argument("--max-open-bets", type=int, default=DEFAULT_MAX_OPEN_BETS)
+    football_scan.add_argument("--max-bets-per-day", type=int, default=DEFAULT_MAX_BETS_PER_DAY)
+    football_scan.add_argument("--enable-btts", action="store_true")
+    football_scan.add_argument("--express-mode", choices=["two-leg"], default="two-leg")
     football_scan.add_argument("--limit", type=int, default=10)
     football_scan.add_argument("--db-path", type=Path, default=Path("data/football_odds.sqlite3"))
     football_scan.add_argument("--notify-telegram", action="store_true")
@@ -68,6 +87,13 @@ def build_parser() -> argparse.ArgumentParser:
     football_serve.add_argument("--min-ev", type=float, default=DEFAULT_MIN_EV)
     football_serve.add_argument("--target-bookmaker", default="Bet365")
     football_serve.add_argument("--bookmakers", default="Bet365,Unibet")
+    football_serve.add_argument("--daily-dd-limit", type=float, default=DEFAULT_DAILY_DD_LIMIT)
+    football_serve.add_argument("--max-single-share", type=float, default=DEFAULT_MAX_SINGLE_SHARE)
+    football_serve.add_argument("--max-express-share", type=float, default=DEFAULT_MAX_EXPRESS_SHARE)
+    football_serve.add_argument("--max-open-bets", type=int, default=DEFAULT_MAX_OPEN_BETS)
+    football_serve.add_argument("--max-bets-per-day", type=int, default=DEFAULT_MAX_BETS_PER_DAY)
+    football_serve.add_argument("--enable-btts", action="store_true")
+    football_serve.add_argument("--express-mode", choices=["two-leg"], default="two-leg")
     football_serve.add_argument("--limit", type=int, default=10)
     football_serve.add_argument("--poll-seconds", type=int, default=300)
     football_serve.add_argument("--db-path", type=Path, default=Path("data/football_odds.sqlite3"))
@@ -263,7 +289,11 @@ async def _football_scan(
     )
     recommendations = await service.poll_once()
     logging.getLogger(__name__).info("Football scan completed recommendations=%s", len(recommendations))
-    payload = [item.to_dict() for item in recommendations[:15]]
+    expresses = service.latest_expresses()
+    payload = {
+        "singles": [item.to_dict() for item in recommendations[:15]],
+        "expresses": [item.to_dict() for item in expresses[:10]],
+    }
     print(json.dumps(payload, ensure_ascii=False, indent=2))
 
 

@@ -55,6 +55,15 @@ class ApiServer:
                     payload = [item.to_dict() for item in data]
                     self._write_json(payload)
                     return
+                if self.path == "/expresses" and hasattr(service, "latest_expresses"):
+                    data = service.latest_expresses()
+                    payload = [item.to_dict() for item in data]
+                    self._write_json(payload)
+                    return
+                if self.path == "/risk-state" and hasattr(service, "risk_state"):
+                    payload = service.risk_state()
+                    self._write_json(payload)
+                    return
                 self.send_error(HTTPStatus.NOT_FOUND, "Not found")
 
             def log_message(self, format: str, *args: Any) -> None:

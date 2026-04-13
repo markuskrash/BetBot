@@ -40,6 +40,10 @@ class FootballEventOdds:
     league: str
     starts_at: datetime
     status: str
+    result_key: str | None
+    home_score: float | None
+    away_score: float | None
+    is_final: bool
     bookmakers: dict[str, list[FootballMarketQuote]]
 
 
@@ -146,6 +150,8 @@ class OddsApiClient:
             if parsed_markets:
                 bookmakers[bookmaker] = parsed_markets
 
+        status = str(payload.get("status", "unknown"))
+        result_key, home_score, away_score = _extract_result(payload)
         return FootballEventOdds(
             event_id=str(payload["id"]),
             home=payload["home"],
@@ -153,7 +159,11 @@ class OddsApiClient:
             sport=payload.get("sport", {}).get("slug", "football"),
             league=payload.get("league", {}).get("name", "Unknown League"),
             starts_at=datetime.fromisoformat(payload["date"].replace("Z", "+00:00")),
-            status=payload.get("status", "unknown"),
+            status=status,
+            result_key=result_key,
+            home_score=home_score,
+            away_score=away_score,
+            is_final=status.lower() in {"finished", "completed", "ended", "closed", "final"},
             bookmakers=bookmakers,
         )
 
@@ -204,3 +214,38 @@ def _parse_market(bookmaker: str, payload: dict[str, Any]) -> FootballMarketQuot
         selections=selections,
         updated_at=updated_at,
     )
+
+
+def _extract_result(payload: dict[str, Any]) -> tuple[str | None, float | None, float | None]:
+    winner = str(payload.get("winner") or payload.get("result") or "").lower()
+    if winner in {"home", "away", "draw"}:
+        return winner, None, None
+
+    home_score: float | None = None
+    away_score: float | None = None
+    scores = payload.get("scores")
+    if isinstance(scores, dict):
+        home_score = _score_value(scores.get("home"))
+        away_score = _score_value(scores.get("away"))
+    elif isinstance(scores, list) and scores:
+        first = scores[0]
+        if isinstance(first, dict):
+            home_score = _score_value(first.get("home"))
+            away_score = _score_value(first.get("away"))
+
+    if home_score is None or away_score is None:
+        return None, home_score, away_score
+    if home_score > away_score:
+        return "home", home_score, away_score
+    if away_score > home_score:
+        return "away", home_score, away_score
+    return "draw", home_score, away_score
+
+
+def _score_value(value: Any) -> float | None:
+    try:
+        if value is None:
+            return None
+        return float(value)
+    except (TypeError, ValueError):
+        return None
