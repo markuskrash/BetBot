@@ -4,6 +4,7 @@ import html
 import json
 import logging
 import re
+import time
 from datetime import UTC, date, datetime
 from typing import Any
 from urllib.error import HTTPError, URLError
@@ -18,8 +19,10 @@ BASE_URL = "https://iss.moex.com/iss"
 
 
 class MoexApiClient:
-    def __init__(self, timeout: int = 20) -> None:
+    def __init__(self, timeout: int = 20, retries: int = 3, retry_backoff_seconds: float = 0.8) -> None:
         self.timeout = timeout
+        self.retries = max(1, retries)
+        self.retry_backoff_seconds = max(0.1, retry_backoff_seconds)
 
     def get_daily_candles(
         self,
@@ -112,17 +115,44 @@ class MoexApiClient:
         if query:
             url = f"{url}?{query}"
         logger.debug("MOEX request path=%s params=%s", path, params)
-        try:
-            with urlopen(url, timeout=self.timeout) as response:
-                return json.loads(response.read().decode("utf-8"))
-        except HTTPError as exc:
-            body = exc.read().decode("utf-8", errors="replace").strip()
-            message = body or exc.reason or f"HTTP {exc.code}"
-            logger.error("MOEX request failed path=%s code=%s message=%s", path, exc.code, message)
-            raise RuntimeError(f"MOEX ISS request failed for {path}: {exc.code} {message}") from exc
-        except URLError as exc:
-            logger.error("MOEX request failed path=%s error=%s", path, exc)
-            raise RuntimeError(f"MOEX ISS network error for {path}: {exc}") from exc
+        for attempt in range(1, self.retries + 1):
+            try:
+                with urlopen(url, timeout=self.timeout) as response:
+                    return json.loads(response.read().decode("utf-8"))
+            except HTTPError as exc:
+                body = exc.read().decode("utf-8", errors="replace").strip()
+                message = body or exc.reason or f"HTTP {exc.code}"
+                retriable = exc.code in {429, 500, 502, 503, 504}
+                if retriable and attempt < self.retries:
+                    delay = self.retry_backoff_seconds * attempt
+                    logger.warning(
+                        "MOEX request retry path=%s attempt=%s/%s code=%s delay=%.1fs",
+                        path,
+                        attempt,
+                        self.retries,
+                        exc.code,
+                        delay,
+                    )
+                    time.sleep(delay)
+                    continue
+                logger.error("MOEX request failed path=%s code=%s message=%s", path, exc.code, message)
+                raise RuntimeError(f"MOEX ISS request failed for {path}: {exc.code} {message}") from exc
+            except URLError as exc:
+                if attempt < self.retries:
+                    delay = self.retry_backoff_seconds * attempt
+                    logger.warning(
+                        "MOEX network retry path=%s attempt=%s/%s delay=%.1fs error=%s",
+                        path,
+                        attempt,
+                        self.retries,
+                        delay,
+                        exc,
+                    )
+                    time.sleep(delay)
+                    continue
+                logger.error("MOEX request failed path=%s error=%s", path, exc)
+                raise RuntimeError(f"MOEX ISS network error for {path}: {exc}") from exc
+        raise RuntimeError(f"MOEX ISS request failed for {path}: retries exhausted")
 
 
 def _table_rows(payload: dict[str, Any], key: str) -> list[dict[str, Any]]:
