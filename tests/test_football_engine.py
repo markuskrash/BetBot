@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import unittest
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from bb_bet_signal.config import EngineConfig
 from bb_bet_signal.football_api import (
@@ -19,7 +19,7 @@ def build_event() -> FootballEventOdds:
         away="Lazio",
         sport="football",
         league="Serie A",
-        starts_at=datetime.now(UTC),
+        starts_at=datetime.now(UTC) + timedelta(minutes=120),
         status="pending",
         result_key=None,
         home_score=None,
@@ -76,6 +76,8 @@ class FootballConsensusEngineTest(unittest.TestCase):
         self.assertTrue(recommendations)
         self.assertEqual(recommendations[0].bookmaker, "Bet365")
         self.assertGreater(recommendations[0].expected_value, 0)
+        self.assertGreaterEqual(recommendations[0].price_advantage, 0.02)
+        self.assertIn(recommendations[0].tier, {"A", "B", "C"})
 
 
 if __name__ == "__main__":

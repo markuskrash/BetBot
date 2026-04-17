@@ -73,6 +73,11 @@ def build_parser() -> argparse.ArgumentParser:
     football_scan.add_argument("--max-bets-per-day", type=int, default=DEFAULT_MAX_BETS_PER_DAY)
     football_scan.add_argument("--enable-btts", action="store_true")
     football_scan.add_argument("--express-mode", choices=["two-leg"], default="two-leg")
+    football_scan.add_argument("--target-bets-per-day", type=int, default=4)
+    football_scan.add_argument("--min-minutes-to-start", type=int, default=45)
+    football_scan.add_argument("--max-minutes-to-start", type=int, default=240)
+    football_scan.add_argument("--realert-odds-delta", type=float, default=0.03)
+    football_scan.add_argument("--realert-ev-delta", type=float, default=0.01)
     football_scan.add_argument("--limit", type=int, default=10)
     football_scan.add_argument("--db-path", type=Path, default=Path("data/football_odds.sqlite3"))
     football_scan.add_argument("--notify-telegram", action="store_true")
@@ -94,6 +99,11 @@ def build_parser() -> argparse.ArgumentParser:
     football_serve.add_argument("--max-bets-per-day", type=int, default=DEFAULT_MAX_BETS_PER_DAY)
     football_serve.add_argument("--enable-btts", action="store_true")
     football_serve.add_argument("--express-mode", choices=["two-leg"], default="two-leg")
+    football_serve.add_argument("--target-bets-per-day", type=int, default=4)
+    football_serve.add_argument("--min-minutes-to-start", type=int, default=45)
+    football_serve.add_argument("--max-minutes-to-start", type=int, default=240)
+    football_serve.add_argument("--realert-odds-delta", type=float, default=0.03)
+    football_serve.add_argument("--realert-ev-delta", type=float, default=0.01)
     football_serve.add_argument("--limit", type=int, default=10)
     football_serve.add_argument("--poll-seconds", type=int, default=300)
     football_serve.add_argument("--db-path", type=Path, default=Path("data/football_odds.sqlite3"))
@@ -157,6 +167,11 @@ def main(argv: Sequence[str] | None = None) -> None:
                     max_bets_per_day=args.max_bets_per_day,
                     enable_btts=args.enable_btts,
                     express_mode=args.express_mode,
+                    target_bets_per_day=args.target_bets_per_day,
+                    min_minutes_to_start=args.min_minutes_to_start,
+                    max_minutes_to_start=args.max_minutes_to_start,
+                    realert_odds_delta=args.realert_odds_delta,
+                    realert_ev_delta=args.realert_ev_delta,
                     limit=args.limit,
                     db_path=args.db_path,
                     notify_telegram=args.notify_telegram,
@@ -184,6 +199,11 @@ def main(argv: Sequence[str] | None = None) -> None:
                     max_bets_per_day=args.max_bets_per_day,
                     enable_btts=args.enable_btts,
                     express_mode=args.express_mode,
+                    target_bets_per_day=args.target_bets_per_day,
+                    min_minutes_to_start=args.min_minutes_to_start,
+                    max_minutes_to_start=args.max_minutes_to_start,
+                    realert_odds_delta=args.realert_odds_delta,
+                    realert_ev_delta=args.realert_ev_delta,
                     limit=args.limit,
                     poll_seconds=args.poll_seconds,
                     db_path=args.db_path,
@@ -286,6 +306,11 @@ async def _football_scan(
     max_bets_per_day: int,
     enable_btts: bool,
     express_mode: str,
+    target_bets_per_day: int,
+    min_minutes_to_start: int,
+    max_minutes_to_start: int,
+    realert_odds_delta: float,
+    realert_ev_delta: float,
     limit: int,
     db_path: Path,
     notify_telegram: bool,
@@ -310,6 +335,11 @@ async def _football_scan(
         max_bets_per_day,
         enable_btts,
         express_mode,
+        target_bets_per_day,
+        min_minutes_to_start,
+        max_minutes_to_start,
+        realert_odds_delta,
+        realert_ev_delta,
         limit,
         300,
         db_path,
@@ -341,6 +371,11 @@ async def _football_serve(
     max_bets_per_day: int,
     enable_btts: bool,
     express_mode: str,
+    target_bets_per_day: int,
+    min_minutes_to_start: int,
+    max_minutes_to_start: int,
+    realert_odds_delta: float,
+    realert_ev_delta: float,
     limit: int,
     poll_seconds: int,
     db_path: Path,
@@ -368,6 +403,11 @@ async def _football_serve(
         max_bets_per_day,
         enable_btts,
         express_mode,
+        target_bets_per_day,
+        min_minutes_to_start,
+        max_minutes_to_start,
+        realert_odds_delta,
+        realert_ev_delta,
         limit,
         poll_seconds,
         db_path,
@@ -395,6 +435,11 @@ def _build_football_service(
     max_bets_per_day: int,
     enable_btts: bool,
     express_mode: str,
+    target_bets_per_day: int,
+    min_minutes_to_start: int,
+    max_minutes_to_start: int,
+    realert_odds_delta: float,
+    realert_ev_delta: float,
     limit: int,
     poll_seconds: int,
     db_path: Path,
@@ -426,7 +471,14 @@ def _build_football_service(
         base_min_ev=min_ev,
     )
     comparison_bookmakers = [item for item in bookmakers if item != target_bookmaker]
-    notifier = TelegramNotifier.from_env() if notify_telegram else None
+    notifier = (
+        TelegramNotifier.from_env(
+            realert_odds_delta=realert_odds_delta,
+            realert_ev_delta=realert_ev_delta,
+        )
+        if notify_telegram
+        else None
+    )
     if notify_telegram and notifier is None:
         raise RuntimeError("TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID is not set")
     logging.getLogger(__name__).info(
@@ -448,6 +500,12 @@ def _build_football_service(
         notifier=notifier,
         poll_seconds=poll_seconds,
         event_limit=limit,
+        target_bets_per_day=target_bets_per_day,
+        min_minutes_to_start=min_minutes_to_start,
+        max_minutes_to_start=max_minutes_to_start,
+        stale_market_minutes=15,
+        realert_odds_delta=realert_odds_delta,
+        realert_ev_delta=realert_ev_delta,
     )
 
 

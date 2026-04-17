@@ -18,25 +18,52 @@ class TelegramNotifier:
     token: str
     chat_id: str
     disable_notification: bool = False
-    _seen: set[str] = field(default_factory=set)
+    realert_odds_delta: float = 0.03
+    realert_ev_delta: float = 0.01
+    _seen_express: set[str] = field(default_factory=set)
+    _last_recommendation_state: dict[str, tuple[float, float]] = field(default_factory=dict)
 
     @classmethod
-    def from_env(cls) -> TelegramNotifier | None:
+    def from_env(
+        cls,
+        *,
+        realert_odds_delta: float = 0.03,
+        realert_ev_delta: float = 0.01,
+    ) -> TelegramNotifier | None:
         token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
         chat_id = os.getenv("TELEGRAM_CHAT_ID", "").strip()
         if not token or not chat_id:
             return None
-        return cls(token=token, chat_id=chat_id)
+        return cls(
+            token=token,
+            chat_id=chat_id,
+            realert_odds_delta=realert_odds_delta,
+            realert_ev_delta=realert_ev_delta,
+        )
 
-    def notify_recommendations(self, recommendations: list[Recommendation], limit: int = 5) -> int:
+    def notify_recommendations(self, recommendations: list[Recommendation], limit: int = 3) -> int:
         sent = 0
-        for recommendation in recommendations[:limit]:
+        actionable = [
+            item
+            for item in recommendations
+            if item.tier in {"A", "B"} and not item.blocked_by_risk
+        ]
+        actionable.sort(
+            key=lambda item: (item.priority_score, item.expected_value, item.edge),
+            reverse=True,
+        )
+        for recommendation in actionable[:limit]:
             signature = _signature_recommendation(recommendation)
-            if signature in self._seen:
-                logger.debug("Skipping duplicate Telegram signal signature=%s", signature)
-                continue
+            previous = self._last_recommendation_state.get(signature)
+            if previous is not None:
+                previous_odds, previous_ev = previous
+                improved_odds = (recommendation.odds - previous_odds) >= self.realert_odds_delta
+                improved_ev = (recommendation.expected_value - previous_ev) >= self.realert_ev_delta
+                if not (improved_odds or improved_ev):
+                    logger.debug("Skipping unchanged Telegram signal signature=%s", signature)
+                    continue
             self.send_message(format_recommendation(recommendation))
-            self._seen.add(signature)
+            self._last_recommendation_state[signature] = (recommendation.odds, recommendation.expected_value)
             sent += 1
         return sent
 
@@ -44,11 +71,11 @@ class TelegramNotifier:
         sent = 0
         for express in expresses[:limit]:
             signature = _signature_express(express)
-            if signature in self._seen:
+            if signature in self._seen_express:
                 logger.debug("Skipping duplicate Telegram express signature=%s", signature)
                 continue
             self.send_message(format_express_recommendation(express))
-            self._seen.add(signature)
+            self._seen_express.add(signature)
             sent += 1
         return sent
 
@@ -74,14 +101,18 @@ class TelegramNotifier:
 
 
 def format_recommendation(recommendation: Recommendation) -> str:
+    minutes_to_start = recommendation.minutes_to_start if recommendation.minutes_to_start is not None else -1
     return "\n".join(
         [
             f"{recommendation.event_name}",
             f"{recommendation.market_name}: {recommendation.selection_name}",
             f"Bookmaker: {recommendation.bookmaker or 'n/a'}",
+            f"Tier: {recommendation.tier} | Priority: {recommendation.priority_score:.3f}",
             f"Odds: {recommendation.odds:.2f}",
             f"Edge: {recommendation.edge:.2%}",
             f"EV: {recommendation.expected_value:.2%}",
+            f"Price advantage: {recommendation.price_advantage:.2%}",
+            f"Minutes to start: {minutes_to_start}",
             f"Stake: {recommendation.recommended_stake:.2f}",
         ]
     )
@@ -112,7 +143,6 @@ def _signature_recommendation(recommendation: Recommendation) -> str:
             recommendation.market_key,
             recommendation.selection_key,
             recommendation.bookmaker,
-            f"{recommendation.odds:.2f}",
         ]
     )
 

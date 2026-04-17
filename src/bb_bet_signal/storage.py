@@ -5,7 +5,7 @@ import sqlite3
 from contextlib import contextmanager
 from datetime import UTC, date, datetime
 from pathlib import Path
-from typing import Iterator
+from typing import Any, Iterator
 
 from .football_api import FootballEventOdds
 from .models import ExpressRecommendation, MoexSignal, Recommendation
@@ -61,6 +61,11 @@ class SnapshotRepository:
                     edge REAL NOT NULL,
                     expected_value REAL NOT NULL,
                     legs_json TEXT,
+                    priority_score REAL,
+                    tier TEXT,
+                    price_advantage REAL,
+                    minutes_to_start INTEGER,
+                    decision_tags TEXT,
                     placed_at TEXT NOT NULL
                 )
                 """
@@ -84,6 +89,11 @@ class SnapshotRepository:
                     implied_probability REAL NOT NULL,
                     edge REAL NOT NULL,
                     expected_value REAL NOT NULL,
+                    priority_score REAL,
+                    tier TEXT,
+                    price_advantage REAL,
+                    minutes_to_start INTEGER,
+                    decision_tags TEXT,
                     placed_at TEXT NOT NULL,
                     settled_at TEXT NOT NULL
                 )
@@ -130,6 +140,51 @@ class SnapshotRepository:
                 )
                 """
             )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS football_decisions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    captured_at TEXT NOT NULL,
+                    event_id TEXT NOT NULL,
+                    league TEXT NOT NULL,
+                    market_key TEXT NOT NULL,
+                    selection_key TEXT NOT NULL,
+                    bookmaker TEXT NOT NULL,
+                    odds REAL NOT NULL,
+                    minutes_to_start INTEGER,
+                    price_advantage REAL,
+                    edge REAL,
+                    expected_value REAL,
+                    priority_score REAL,
+                    tier TEXT NOT NULL,
+                    decision TEXT NOT NULL,
+                    reason TEXT NOT NULL
+                )
+                """
+            )
+            open_columns = {row[1] for row in connection.execute("PRAGMA table_info(football_open_bets)")}
+            if "priority_score" not in open_columns:
+                connection.execute("ALTER TABLE football_open_bets ADD COLUMN priority_score REAL")
+            if "tier" not in open_columns:
+                connection.execute("ALTER TABLE football_open_bets ADD COLUMN tier TEXT")
+            if "price_advantage" not in open_columns:
+                connection.execute("ALTER TABLE football_open_bets ADD COLUMN price_advantage REAL")
+            if "minutes_to_start" not in open_columns:
+                connection.execute("ALTER TABLE football_open_bets ADD COLUMN minutes_to_start INTEGER")
+            if "decision_tags" not in open_columns:
+                connection.execute("ALTER TABLE football_open_bets ADD COLUMN decision_tags TEXT")
+
+            closed_columns = {row[1] for row in connection.execute("PRAGMA table_info(football_closed_bets)")}
+            if "priority_score" not in closed_columns:
+                connection.execute("ALTER TABLE football_closed_bets ADD COLUMN priority_score REAL")
+            if "tier" not in closed_columns:
+                connection.execute("ALTER TABLE football_closed_bets ADD COLUMN tier TEXT")
+            if "price_advantage" not in closed_columns:
+                connection.execute("ALTER TABLE football_closed_bets ADD COLUMN price_advantage REAL")
+            if "minutes_to_start" not in closed_columns:
+                connection.execute("ALTER TABLE football_closed_bets ADD COLUMN minutes_to_start INTEGER")
+            if "decision_tags" not in closed_columns:
+                connection.execute("ALTER TABLE football_closed_bets ADD COLUMN decision_tags TEXT")
 
     def persist_event(self, event: FootballEventOdds, captured_at: datetime | None = None) -> None:
         timestamp = (captured_at or datetime.now(UTC)).isoformat()
@@ -198,8 +253,9 @@ class SnapshotRepository:
                 INSERT INTO football_open_bets (
                     bet_key, bet_type, event_id, league, market_key, selection_key,
                     odds, stake, potential_payout, model_probability, implied_probability,
-                    edge, expected_value, legs_json, placed_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    edge, expected_value, legs_json, priority_score, tier,
+                    price_advantage, minutes_to_start, decision_tags, placed_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     bet_key,
@@ -216,6 +272,11 @@ class SnapshotRepository:
                     recommendation.edge,
                     recommendation.expected_value,
                     None,
+                    recommendation.priority_score,
+                    recommendation.tier,
+                    recommendation.price_advantage,
+                    recommendation.minutes_to_start,
+                    json.dumps(recommendation.decision_tags, ensure_ascii=False),
                     placed_at.isoformat(),
                 ),
             )
@@ -243,8 +304,9 @@ class SnapshotRepository:
                 INSERT INTO football_open_bets (
                     bet_key, bet_type, event_id, league, market_key, selection_key,
                     odds, stake, potential_payout, model_probability, implied_probability,
-                    edge, expected_value, legs_json, placed_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    edge, expected_value, legs_json, priority_score, tier,
+                    price_advantage, minutes_to_start, decision_tags, placed_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     bet_key,
@@ -261,6 +323,11 @@ class SnapshotRepository:
                     express.edge,
                     express.expected_value,
                     json.dumps(legs, ensure_ascii=False),
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
                     placed_at.isoformat(),
                 ),
             )
@@ -295,7 +362,8 @@ class SnapshotRepository:
                 """
                 SELECT bet_key, bet_type, event_id, league, market_key, selection_key,
                        odds, stake, model_probability, implied_probability, edge, expected_value,
-                       legs_json, placed_at
+                       legs_json, priority_score, tier, price_advantage, minutes_to_start,
+                       decision_tags, placed_at
                 FROM football_open_bets
                 """
             ).fetchall()
@@ -315,6 +383,11 @@ class SnapshotRepository:
                     edge,
                     expected_value,
                     legs_json,
+                    priority_score,
+                    tier,
+                    price_advantage,
+                    minutes_to_start,
+                    decision_tags,
                     placed_at,
                 ) = row
                 outcome = _resolve_outcome(connection, bet_type, event_id, selection_key, legs_json)
@@ -340,8 +413,9 @@ class SnapshotRepository:
                         bet_key, bet_type, event_id, league, market_key, selection_key,
                         odds, stake, payout, pnl, outcome,
                         model_probability, implied_probability, edge, expected_value,
-                        placed_at, settled_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        priority_score, tier, price_advantage, minutes_to_start,
+                        decision_tags, placed_at, settled_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         bet_key,
@@ -359,6 +433,11 @@ class SnapshotRepository:
                         implied_probability,
                         edge,
                         expected_value,
+                        priority_score,
+                        tier,
+                        price_advantage,
+                        minutes_to_start,
+                        decision_tags,
                         placed_at,
                         settled_at.isoformat(),
                     ),
@@ -528,6 +607,197 @@ class SnapshotRepository:
             "reason": str(row[1]),
             "triggered_at": str(row[2]),
             "updated_at": str(row[3]),
+        }
+
+    def log_decisions(self, entries: list[dict[str, Any]], captured_at: datetime) -> None:
+        if not entries:
+            return
+        timestamp = captured_at.isoformat()
+        with self._connect() as connection:
+            for item in entries:
+                connection.execute(
+                    """
+                    INSERT INTO football_decisions (
+                        captured_at, event_id, league, market_key, selection_key,
+                        bookmaker, odds, minutes_to_start, price_advantage, edge,
+                        expected_value, priority_score, tier, decision, reason
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        timestamp,
+                        str(item.get("event_id") or ""),
+                        str(item.get("league") or ""),
+                        str(item.get("market_key") or ""),
+                        str(item.get("selection_key") or ""),
+                        str(item.get("bookmaker") or ""),
+                        float(item.get("odds") or 0.0),
+                        int(item["minutes_to_start"]) if item.get("minutes_to_start") is not None else None,
+                        float(item["price_advantage"]) if item.get("price_advantage") is not None else None,
+                        float(item["edge"]) if item.get("edge") is not None else None,
+                        float(item["expected_value"]) if item.get("expected_value") is not None else None,
+                        float(item["priority_score"]) if item.get("priority_score") is not None else None,
+                        str(item.get("tier") or "C"),
+                        str(item.get("decision") or "rejected"),
+                        str(item.get("reason") or "unknown"),
+                    ),
+                )
+
+    def rolling_league_performance(self, days: int, until: date, *, limit: int = 5) -> list[dict[str, float | str]]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT
+                    league,
+                    COUNT(*) AS bets_count,
+                    COALESCE(AVG(expected_value), 0) AS avg_ev,
+                    COALESCE(AVG(CASE WHEN outcome = 'win' THEN 1.0 ELSE 0.0 END), 0) AS hit_rate,
+                    COALESCE(SUM(pnl), 0) AS pnl_sum,
+                    COALESCE(SUM(stake), 0) AS turnover,
+                    COALESCE(AVG(edge), 0) AS clv_proxy
+                FROM football_closed_bets
+                WHERE date(settled_at) >= date(?, ?)
+                  AND date(settled_at) <= date(?)
+                GROUP BY league
+                ORDER BY bets_count DESC, avg_ev DESC
+                LIMIT ?
+                """,
+                (until.isoformat(), f"-{days - 1} day", until.isoformat(), limit),
+            ).fetchall()
+        payload: list[dict[str, float | str]] = []
+        for row in rows:
+            turnover = float(row[5] or 0.0)
+            payload.append(
+                {
+                    "league": str(row[0]),
+                    "bets_count": int(row[1] or 0),
+                    "avg_ev": float(row[2] or 0.0),
+                    "hit_rate": float(row[3] or 0.0),
+                    "roi": (float(row[4] or 0.0) / turnover) if turnover > 0 else 0.0,
+                    "clv_proxy": float(row[6] or 0.0),
+                }
+            )
+        return payload
+
+    def rolling_market_performance(self, days: int, until: date, *, limit: int = 5) -> list[dict[str, float | str]]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT
+                    market_key,
+                    COUNT(*) AS bets_count,
+                    COALESCE(AVG(expected_value), 0) AS avg_ev,
+                    COALESCE(AVG(CASE WHEN outcome = 'win' THEN 1.0 ELSE 0.0 END), 0) AS hit_rate,
+                    COALESCE(SUM(pnl), 0) AS pnl_sum,
+                    COALESCE(SUM(stake), 0) AS turnover,
+                    COALESCE(AVG(edge), 0) AS clv_proxy
+                FROM football_closed_bets
+                WHERE date(settled_at) >= date(?, ?)
+                  AND date(settled_at) <= date(?)
+                GROUP BY market_key
+                ORDER BY bets_count DESC, avg_ev DESC
+                LIMIT ?
+                """,
+                (until.isoformat(), f"-{days - 1} day", until.isoformat(), limit),
+            ).fetchall()
+        payload: list[dict[str, float | str]] = []
+        for row in rows:
+            turnover = float(row[5] or 0.0)
+            payload.append(
+                {
+                    "market_key": str(row[0]),
+                    "bets_count": int(row[1] or 0),
+                    "avg_ev": float(row[2] or 0.0),
+                    "hit_rate": float(row[3] or 0.0),
+                    "roi": (float(row[4] or 0.0) / turnover) if turnover > 0 else 0.0,
+                    "clv_proxy": float(row[6] or 0.0),
+                }
+            )
+        return payload
+
+    def rolling_window_performance(self, days: int, until: date) -> list[dict[str, float | str]]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT
+                    CASE
+                        WHEN minutes_to_start < 60 THEN '0-59'
+                        WHEN minutes_to_start <= 120 THEN '60-120'
+                        WHEN minutes_to_start <= 240 THEN '121-240'
+                        ELSE '241+'
+                    END AS window_bucket,
+                    COUNT(*) AS signals_count,
+                    COALESCE(AVG(expected_value), 0) AS avg_ev,
+                    COALESCE(AVG(edge), 0) AS avg_edge,
+                    COALESCE(AVG(price_advantage), 0) AS avg_price_advantage
+                FROM football_decisions
+                WHERE decision = 'accepted'
+                  AND minutes_to_start IS NOT NULL
+                  AND date(captured_at) >= date(?, ?)
+                  AND date(captured_at) <= date(?)
+                GROUP BY window_bucket
+                ORDER BY
+                    CASE window_bucket
+                        WHEN '0-59' THEN 1
+                        WHEN '60-120' THEN 2
+                        WHEN '121-240' THEN 3
+                        ELSE 4
+                    END
+                """,
+                (until.isoformat(), f"-{days - 1} day", until.isoformat()),
+            ).fetchall()
+        return [
+            {
+                "window_bucket": str(row[0]),
+                "signals_count": int(row[1] or 0),
+                "avg_ev": float(row[2] or 0.0),
+                "avg_edge": float(row[3] or 0.0),
+                "avg_price_advantage": float(row[4] or 0.0),
+            }
+            for row in rows
+        ]
+
+    def league_sample_gate(self, days: int, until: date, *, sample_gate: int = 30) -> dict[str, dict[str, float | str]]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT
+                    league,
+                    COUNT(*) AS settled_count,
+                    COALESCE(SUM(pnl), 0) AS pnl_sum,
+                    COALESCE(SUM(stake), 0) AS turnover
+                FROM football_closed_bets
+                WHERE date(settled_at) >= date(?, ?)
+                  AND date(settled_at) <= date(?)
+                GROUP BY league
+                """,
+                (until.isoformat(), f"-{days - 1} day", until.isoformat()),
+            ).fetchall()
+        gates: dict[str, dict[str, float | str]] = {}
+        for league, settled_count, pnl_sum, turnover in rows:
+            count = int(settled_count or 0)
+            total_turnover = float(turnover or 0.0)
+            roi = (float(pnl_sum or 0.0) / total_turnover) if total_turnover > 0 else 0.0
+            if count < sample_gate:
+                continue
+            if roi <= -0.10:
+                gates[str(league)] = {"action": "ban", "roi": roi, "count": count}
+            elif roi <= -0.03:
+                gates[str(league)] = {"action": "penalty", "roi": roi, "count": count}
+        return gates
+
+    def performance_snapshot(self, now: datetime | None = None) -> dict[str, Any]:
+        timestamp = now or datetime.now(UTC)
+        stat_date = timestamp.date()
+        rolling_7d = self.rolling_closed_metrics(7, stat_date)
+        rolling_30d = self.rolling_closed_metrics(30, stat_date)
+        return {
+            "rolling": {
+                "7d": rolling_7d,
+                "30d": rolling_30d,
+            },
+            "top_leagues": self.rolling_league_performance(30, stat_date, limit=5),
+            "top_markets": self.rolling_market_performance(30, stat_date, limit=5),
+            "window_minutes": self.rolling_window_performance(30, stat_date),
         }
 
 

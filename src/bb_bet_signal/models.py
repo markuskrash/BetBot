@@ -63,6 +63,11 @@ class Recommendation:
     starts_at: datetime | None = None
     blocked_by_risk: bool = False
     bookmaker: str = ""
+    priority_score: float = 0.0
+    tier: str = "C"
+    minutes_to_start: int | None = None
+    price_advantage: float = 0.0
+    decision_tags: list[str] = field(default_factory=list)
     reasons: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:

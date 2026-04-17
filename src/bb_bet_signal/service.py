@@ -64,6 +64,10 @@ class ApiServer:
                     payload = service.risk_state()
                     self._write_json(payload)
                     return
+                if self.path == "/performance" and hasattr(service, "performance"):
+                    payload = service.performance()
+                    self._write_json(payload)
+                    return
                 self.send_error(HTTPStatus.NOT_FOUND, "Not found")
 
             def log_message(self, format: str, *args: Any) -> None:
