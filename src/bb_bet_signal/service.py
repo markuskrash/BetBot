@@ -68,6 +68,15 @@ class ApiServer:
                     payload = service.performance()
                     self._write_json(payload)
                     return
+                if self.path == "/longterm/recommendations" and hasattr(service, "latest_longterm"):
+                    data = service.latest_longterm()
+                    payload = [item.to_dict() for item in data]
+                    self._write_json(payload)
+                    return
+                if self.path == "/longterm/performance" and hasattr(service, "longterm_performance"):
+                    payload = service.longterm_performance()
+                    self._write_json(payload)
+                    return
                 self.send_error(HTTPStatus.NOT_FOUND, "Not found")
 
             def log_message(self, format: str, *args: Any) -> None:

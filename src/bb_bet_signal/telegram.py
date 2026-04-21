@@ -41,6 +41,14 @@ class TelegramNotifier:
             realert_ev_delta=realert_ev_delta,
         )
 
+    @classmethod
+    def from_env_longterm(cls) -> TelegramNotifier | None:
+        token = os.getenv("TELEGRAM_LONGTERM_BOT_TOKEN", "").strip() or os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
+        chat_id = os.getenv("TELEGRAM_LONGTERM_CHAT_ID", "").strip()
+        if not token or not chat_id:
+            return None
+        return cls(token=token, chat_id=chat_id)
+
     def notify_recommendations(self, recommendations: list[Recommendation], limit: int = 3) -> int:
         sent = 0
         actionable = [

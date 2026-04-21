@@ -28,6 +28,7 @@ from .football_service import FootballPollingService
 from .logging_setup import setup_logging
 from .moex_api import MoexApiClient
 from .moex_engine import MoexSignalEngine
+from .moex_longterm import LongTermMoexEngine, MoexLongTermService
 from .moex_service import MoexStockService
 from .providers import DemoRealtimeFeed, JsonlRealtimeFeed
 from .storage import MoexSignalRepository, SnapshotRepository
@@ -134,6 +135,34 @@ def build_parser() -> argparse.ArgumentParser:
     moex_serve.add_argument("--notify-telegram", action="store_true")
     moex_serve.add_argument("--log-file", type=Path, default=Path("logs/moex-serve.log"))
     moex_serve.add_argument("--log-level", default="INFO")
+
+    moex_longterm_scan = subparsers.add_parser("moex-longterm-scan", help="Fetch MOEX long-term signals")
+    moex_longterm_scan.add_argument("--symbols", default="SBER,GAZP,LKOH,ROSN,NVTK,YDEX,T")
+    moex_longterm_scan.add_argument("--profiles", default="swing,position")
+    moex_longterm_scan.add_argument("--history-days", type=int, default=365)
+    moex_longterm_scan.add_argument("--news-limit", type=int, default=250)
+    moex_longterm_scan.add_argument("--news-window-hours", type=int, default=336)
+    moex_longterm_scan.add_argument("--poll-seconds", type=int, default=86400)
+    moex_longterm_scan.add_argument("--max-open-positions", type=int, default=5)
+    moex_longterm_scan.add_argument("--db-path", type=Path, default=Path("data/moex_signals.sqlite3"))
+    moex_longterm_scan.add_argument("--notify-telegram", action="store_true")
+    moex_longterm_scan.add_argument("--log-file", type=Path, default=Path("logs/moex-longterm-scan.log"))
+    moex_longterm_scan.add_argument("--log-level", default="INFO")
+
+    moex_longterm_serve = subparsers.add_parser("moex-longterm-serve", help="Run MOEX long-term polling service and HTTP API")
+    moex_longterm_serve.add_argument("--host", default="127.0.0.1")
+    moex_longterm_serve.add_argument("--port", type=int, default=8083)
+    moex_longterm_serve.add_argument("--symbols", default="SBER,GAZP,LKOH,ROSN,NVTK,YDEX,T")
+    moex_longterm_serve.add_argument("--profiles", default="swing,position")
+    moex_longterm_serve.add_argument("--history-days", type=int, default=365)
+    moex_longterm_serve.add_argument("--news-limit", type=int, default=250)
+    moex_longterm_serve.add_argument("--news-window-hours", type=int, default=336)
+    moex_longterm_serve.add_argument("--poll-seconds", type=int, default=86400)
+    moex_longterm_serve.add_argument("--max-open-positions", type=int, default=5)
+    moex_longterm_serve.add_argument("--db-path", type=Path, default=Path("data/moex_signals.sqlite3"))
+    moex_longterm_serve.add_argument("--notify-telegram", action="store_true")
+    moex_longterm_serve.add_argument("--log-file", type=Path, default=Path("logs/moex-longterm-serve.log"))
+    moex_longterm_serve.add_argument("--log-level", default="INFO")
 
     return parser
 
@@ -244,6 +273,48 @@ def main(argv: Sequence[str] | None = None) -> None:
                     news_limit=args.news_limit,
                     news_window_hours=args.news_window_hours,
                     poll_seconds=args.poll_seconds,
+                    db_path=args.db_path,
+                    notify_telegram=args.notify_telegram,
+                )
+            )
+        except KeyboardInterrupt:
+            pass
+        except RuntimeError as exc:
+            raise SystemExit(str(exc)) from exc
+        return
+    if args.command == "moex-longterm-scan":
+        setup_logging(args.log_level, args.log_file)
+        try:
+            asyncio.run(
+                _moex_longterm_scan(
+                    symbols=_split_csv(args.symbols),
+                    profiles=_split_csv(args.profiles),
+                    history_days=args.history_days,
+                    news_limit=args.news_limit,
+                    news_window_hours=args.news_window_hours,
+                    poll_seconds=args.poll_seconds,
+                    max_open_positions=args.max_open_positions,
+                    db_path=args.db_path,
+                    notify_telegram=args.notify_telegram,
+                )
+            )
+        except RuntimeError as exc:
+            raise SystemExit(str(exc)) from exc
+        return
+    if args.command == "moex-longterm-serve":
+        setup_logging(args.log_level, args.log_file)
+        try:
+            asyncio.run(
+                _moex_longterm_serve(
+                    host=args.host,
+                    port=args.port,
+                    symbols=_split_csv(args.symbols),
+                    profiles=_split_csv(args.profiles),
+                    history_days=args.history_days,
+                    news_limit=args.news_limit,
+                    news_window_hours=args.news_window_hours,
+                    poll_seconds=args.poll_seconds,
+                    max_open_positions=args.max_open_positions,
                     db_path=args.db_path,
                     notify_telegram=args.notify_telegram,
                 )
@@ -578,6 +649,84 @@ async def _moex_serve(
         server.stop()
 
 
+async def _moex_longterm_scan(
+    *,
+    symbols: list[str],
+    profiles: list[str],
+    history_days: int,
+    news_limit: int,
+    news_window_hours: int,
+    poll_seconds: int,
+    max_open_positions: int,
+    db_path: Path,
+    notify_telegram: bool,
+) -> None:
+    logging.getLogger(__name__).info(
+        "Starting MOEX long-term scan symbols=%s profiles=%s history_days=%s news_limit=%s window_hours=%s",
+        ",".join(symbols),
+        ",".join(profiles),
+        history_days,
+        news_limit,
+        news_window_hours,
+    )
+    service = _build_moex_longterm_service(
+        symbols=symbols,
+        profiles=profiles,
+        history_days=history_days,
+        news_limit=news_limit,
+        news_window_hours=news_window_hours,
+        poll_seconds=poll_seconds,
+        max_open_positions=max_open_positions,
+        db_path=db_path,
+        notify_telegram=notify_telegram,
+    )
+    signals = await service.poll_once()
+    payload = [item.to_dict() for item in signals]
+    print(json.dumps(payload, ensure_ascii=False, indent=2))
+
+
+async def _moex_longterm_serve(
+    *,
+    host: str,
+    port: int,
+    symbols: list[str],
+    profiles: list[str],
+    history_days: int,
+    news_limit: int,
+    news_window_hours: int,
+    poll_seconds: int,
+    max_open_positions: int,
+    db_path: Path,
+    notify_telegram: bool,
+) -> None:
+    logging.getLogger(__name__).info(
+        "Starting MOEX long-term serve host=%s port=%s symbols=%s profiles=%s poll=%s",
+        host,
+        port,
+        ",".join(symbols),
+        ",".join(profiles),
+        poll_seconds,
+    )
+    service = _build_moex_longterm_service(
+        symbols=symbols,
+        profiles=profiles,
+        history_days=history_days,
+        news_limit=news_limit,
+        news_window_hours=news_window_hours,
+        poll_seconds=poll_seconds,
+        max_open_positions=max_open_positions,
+        db_path=db_path,
+        notify_telegram=notify_telegram,
+    )
+    server = ApiServer(service, host, port)
+    server.start()
+    print(f"MOEX long-term HTTP API listening on http://{host}:{port}")
+    try:
+        await service.run_forever()
+    finally:
+        server.stop()
+
+
 def _build_moex_service(
     *,
     symbols: list[str],
@@ -606,6 +755,44 @@ def _build_moex_service(
         history_days=history_days,
         news_limit=news_limit,
         news_window_hours=news_window_hours,
+    )
+
+
+def _build_moex_longterm_service(
+    *,
+    symbols: list[str],
+    profiles: list[str],
+    history_days: int,
+    news_limit: int,
+    news_window_hours: int,
+    poll_seconds: int,
+    max_open_positions: int,
+    db_path: Path,
+    notify_telegram: bool,
+) -> MoexLongTermService:
+    if not symbols:
+        raise RuntimeError("At least one MOEX symbol is required")
+    clean_profiles = [item for item in profiles if item in {"swing", "position"}]
+    if not clean_profiles:
+        raise RuntimeError("At least one profile is required: swing, position")
+    client = MoexApiClient()
+    engine = LongTermMoexEngine()
+    repository = MoexSignalRepository(db_path)
+    notifier = TelegramNotifier.from_env_longterm() if notify_telegram else None
+    if notify_telegram and notifier is None:
+        raise RuntimeError("TELEGRAM_LONGTERM_CHAT_ID (and bot token) is not set")
+    return MoexLongTermService(
+        client,
+        engine,
+        symbols=symbols,
+        profiles=clean_profiles,
+        repository=repository,
+        notifier=notifier,
+        poll_seconds=poll_seconds,
+        history_days=history_days,
+        news_limit=news_limit,
+        news_window_hours=news_window_hours,
+        max_open_positions=max_open_positions,
     )
 
 

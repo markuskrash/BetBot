@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any, Iterator
 
 from .football_api import FootballEventOdds
-from .models import ExpressRecommendation, MoexSignal, Recommendation
+from .models import ExpressRecommendation, LongTermSignal, MoexSignal, Recommendation
 
 
 class SnapshotRepository:
@@ -858,6 +858,67 @@ class MoexSignalRepository:
                 )
                 """
             )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS moex_longterm_signals (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    symbol TEXT NOT NULL,
+                    profile TEXT NOT NULL,
+                    action TEXT NOT NULL,
+                    score REAL NOT NULL,
+                    confidence REAL NOT NULL,
+                    last_price REAL NOT NULL,
+                    horizon_days_min INTEGER NOT NULL,
+                    horizon_days_max INTEGER NOT NULL,
+                    position_share REAL NOT NULL,
+                    technical_score REAL NOT NULL,
+                    event_score REAL NOT NULL,
+                    event_count INTEGER NOT NULL,
+                    confirmation_count INTEGER NOT NULL,
+                    holding_stage TEXT NOT NULL,
+                    stop_loss REAL,
+                    take_profit REAL,
+                    reasons TEXT NOT NULL,
+                    generated_at TEXT NOT NULL
+                )
+                """
+            )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS moex_longterm_notification_state (
+                    symbol TEXT NOT NULL,
+                    profile TEXT NOT NULL,
+                    action TEXT NOT NULL,
+                    score REAL NOT NULL,
+                    confidence REAL NOT NULL,
+                    confirmation_count INTEGER NOT NULL,
+                    last_price REAL NOT NULL,
+                    stop_loss REAL,
+                    take_profit REAL,
+                    sent_at TEXT NOT NULL,
+                    PRIMARY KEY (symbol, profile)
+                )
+                """
+            )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS moex_longterm_positions (
+                    symbol TEXT NOT NULL,
+                    profile TEXT NOT NULL,
+                    action TEXT NOT NULL,
+                    score REAL NOT NULL,
+                    confidence REAL NOT NULL,
+                    confirmation_count INTEGER NOT NULL,
+                    last_price REAL NOT NULL,
+                    stop_loss REAL,
+                    take_profit REAL,
+                    opened_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    is_active INTEGER NOT NULL DEFAULT 1,
+                    PRIMARY KEY (symbol, profile)
+                )
+                """
+            )
 
     def persist_signals(self, signals: list[MoexSignal]) -> None:
         with self._connect() as connection:
@@ -883,6 +944,41 @@ class MoexSignalRepository:
                         signal.technical_score,
                         signal.event_score,
                         signal.event_count,
+                        " | ".join(signal.reasons),
+                        signal.generated_at.isoformat(),
+                    ),
+                )
+
+    def persist_longterm_signals(self, signals: list[LongTermSignal]) -> None:
+        with self._connect() as connection:
+            for signal in signals:
+                connection.execute(
+                    """
+                    INSERT INTO moex_longterm_signals (
+                        symbol, profile, action, score, confidence, last_price,
+                        horizon_days_min, horizon_days_max, position_share,
+                        technical_score, event_score, event_count,
+                        confirmation_count, holding_stage, stop_loss, take_profit,
+                        reasons, generated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        signal.symbol,
+                        signal.profile,
+                        signal.action,
+                        signal.score,
+                        signal.confidence,
+                        signal.last_price,
+                        signal.horizon_days_min,
+                        signal.horizon_days_max,
+                        signal.position_share,
+                        signal.technical_score,
+                        signal.event_score,
+                        signal.event_count,
+                        signal.confirmation_count,
+                        signal.holding_stage,
+                        signal.stop_loss,
+                        signal.take_profit,
                         " | ".join(signal.reasons),
                         signal.generated_at.isoformat(),
                     ),
@@ -937,6 +1033,182 @@ class MoexSignalRepository:
                     signal.generated_at.isoformat(),
                 ),
             )
+
+    def get_longterm_notification_state(self, symbol: str, profile: str) -> dict[str, float | str | None] | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT action, score, confidence, confirmation_count, last_price, stop_loss, take_profit, sent_at
+                FROM moex_longterm_notification_state
+                WHERE symbol = ? AND profile = ?
+                """,
+                (symbol, profile),
+            ).fetchone()
+        if row is None:
+            return None
+        return {
+            "action": row[0],
+            "score": row[1],
+            "confidence": row[2],
+            "confirmation_count": row[3],
+            "last_price": row[4],
+            "stop_loss": row[5],
+            "take_profit": row[6],
+            "sent_at": row[7],
+        }
+
+    def upsert_longterm_notification_state(self, signal: LongTermSignal) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO moex_longterm_notification_state (
+                    symbol, profile, action, score, confidence, confirmation_count,
+                    last_price, stop_loss, take_profit, sent_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(symbol, profile) DO UPDATE SET
+                    action=excluded.action,
+                    score=excluded.score,
+                    confidence=excluded.confidence,
+                    confirmation_count=excluded.confirmation_count,
+                    last_price=excluded.last_price,
+                    stop_loss=excluded.stop_loss,
+                    take_profit=excluded.take_profit,
+                    sent_at=excluded.sent_at
+                """,
+                (
+                    signal.symbol,
+                    signal.profile,
+                    signal.action,
+                    signal.score,
+                    signal.confidence,
+                    signal.confirmation_count,
+                    signal.last_price,
+                    signal.stop_loss,
+                    signal.take_profit,
+                    signal.generated_at.isoformat(),
+                ),
+            )
+
+    def refresh_longterm_positions(self, actionable: list[LongTermSignal]) -> None:
+        timestamp = datetime.now(UTC).isoformat()
+        active_keys = {(item.symbol, item.profile) for item in actionable}
+        with self._connect() as connection:
+            for signal in actionable:
+                row = connection.execute(
+                    """
+                    SELECT opened_at FROM moex_longterm_positions
+                    WHERE symbol = ? AND profile = ?
+                    """,
+                    (signal.symbol, signal.profile),
+                ).fetchone()
+                opened_at = str(row[0]) if row else timestamp
+                connection.execute(
+                    """
+                    INSERT INTO moex_longterm_positions (
+                        symbol, profile, action, score, confidence, confirmation_count,
+                        last_price, stop_loss, take_profit, opened_at, updated_at, is_active
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+                    ON CONFLICT(symbol, profile) DO UPDATE SET
+                        action=excluded.action,
+                        score=excluded.score,
+                        confidence=excluded.confidence,
+                        confirmation_count=excluded.confirmation_count,
+                        last_price=excluded.last_price,
+                        stop_loss=excluded.stop_loss,
+                        take_profit=excluded.take_profit,
+                        updated_at=excluded.updated_at,
+                        is_active=1
+                    """,
+                    (
+                        signal.symbol,
+                        signal.profile,
+                        signal.action,
+                        signal.score,
+                        signal.confidence,
+                        signal.confirmation_count,
+                        signal.last_price,
+                        signal.stop_loss,
+                        signal.take_profit,
+                        opened_at,
+                        timestamp,
+                    ),
+                )
+            rows = connection.execute(
+                "SELECT symbol, profile FROM moex_longterm_positions WHERE is_active = 1"
+            ).fetchall()
+            for symbol, profile in rows:
+                if (str(symbol), str(profile)) in active_keys:
+                    continue
+                connection.execute(
+                    """
+                    UPDATE moex_longterm_positions
+                    SET is_active = 0, updated_at = ?
+                    WHERE symbol = ? AND profile = ?
+                    """,
+                    (timestamp, symbol, profile),
+                )
+
+    def longterm_performance_snapshot(self) -> dict[str, Any]:
+        with self._connect() as connection:
+            rows_profile = connection.execute(
+                """
+                SELECT
+                    profile,
+                    COUNT(*) AS signals_count,
+                    COALESCE(AVG(score), 0) AS avg_score,
+                    COALESCE(AVG(confidence), 0) AS avg_confidence,
+                    COALESCE(AVG(CASE WHEN action IN ('BUY','SELL') THEN 1.0 ELSE 0.0 END), 0) AS actionable_rate
+                FROM moex_longterm_signals
+                WHERE date(generated_at) >= date('now', '-30 day')
+                GROUP BY profile
+                ORDER BY profile
+                """
+            ).fetchall()
+            rows_actions = connection.execute(
+                """
+                SELECT action, COUNT(*)
+                FROM moex_longterm_signals
+                WHERE date(generated_at) >= date('now', '-30 day')
+                GROUP BY action
+                ORDER BY COUNT(*) DESC
+                """
+            ).fetchall()
+            rows_positions = connection.execute(
+                """
+                SELECT symbol, profile, action, score, confidence, updated_at
+                FROM moex_longterm_positions
+                WHERE is_active = 1
+                ORDER BY confidence DESC, ABS(score) DESC
+                """
+            ).fetchall()
+        return {
+            "profiles_30d": [
+                {
+                    "profile": str(row[0]),
+                    "signals_count": int(row[1]),
+                    "avg_score": float(row[2]),
+                    "avg_confidence": float(row[3]),
+                    "actionable_rate": float(row[4]),
+                }
+                for row in rows_profile
+            ],
+            "actions_30d": [
+                {"action": str(row[0]), "count": int(row[1])}
+                for row in rows_actions
+            ],
+            "active_positions": [
+                {
+                    "symbol": str(row[0]),
+                    "profile": str(row[1]),
+                    "action": str(row[2]),
+                    "score": float(row[3]),
+                    "confidence": float(row[4]),
+                    "updated_at": str(row[5]),
+                }
+                for row in rows_positions
+            ],
+            "active_positions_count": len(rows_positions),
+        }
 
 
 def _single_bet_key(recommendation: Recommendation) -> str:

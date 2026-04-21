@@ -9,6 +9,7 @@ __all__ = [
     "football_service",
     "moex_api",
     "moex_engine",
+    "moex_longterm",
     "moex_service",
     "models",
     "providers",

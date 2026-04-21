@@ -165,3 +165,30 @@ class MoexSignal:
         payload = asdict(self)
         payload["generated_at"] = self.generated_at.isoformat()
         return payload
+
+
+@dataclass(slots=True)
+class LongTermSignal:
+    symbol: str
+    profile: str
+    action: str
+    score: float
+    confidence: float
+    last_price: float
+    horizon_days_min: int
+    horizon_days_max: int
+    position_share: float
+    technical_score: float
+    event_score: float
+    event_count: int
+    confirmation_count: int
+    holding_stage: str
+    generated_at: datetime
+    stop_loss: float | None = None
+    take_profit: float | None = None
+    reasons: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        payload = asdict(self)
+        payload["generated_at"] = self.generated_at.isoformat()
+        return payload
