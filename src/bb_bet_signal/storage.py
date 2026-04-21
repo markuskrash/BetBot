@@ -10,6 +10,11 @@ from typing import Any, Iterator
 from .football_api import FootballEventOdds
 from .models import ExpressRecommendation, LongTermSignal, MoexSignal, Recommendation
 
+LONGTERM_CONFIRMATION_TARGETS: dict[str, int] = {
+    "swing": 2,
+    "position": 3,
+}
+
 
 class SnapshotRepository:
     def __init__(self, path: str | Path) -> None:
@@ -1089,10 +1094,97 @@ class MoexSignalRepository:
                 ),
             )
 
-    def refresh_longterm_positions(self, actionable: list[LongTermSignal]) -> None:
-        timestamp = datetime.now(UTC).isoformat()
-        active_keys = {(item.symbol, item.profile) for item in actionable}
+    def get_latest_longterm_signal(self, symbol: str, profile: str) -> dict[str, float | str | None] | None:
         with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT action, score, confidence, confirmation_count, last_price, stop_loss, take_profit, generated_at
+                FROM moex_longterm_signals
+                WHERE symbol = ? AND profile = ?
+                ORDER BY id DESC
+                LIMIT 1
+                """,
+                (symbol, profile),
+            ).fetchone()
+        if row is None:
+            return None
+        return {
+            "action": row[0],
+            "score": row[1],
+            "confidence": row[2],
+            "confirmation_count": row[3],
+            "last_price": row[4],
+            "stop_loss": row[5],
+            "take_profit": row[6],
+            "generated_at": row[7],
+        }
+
+    def refresh_longterm_positions(self, *, candidates: list[LongTermSignal], actionable: list[LongTermSignal]) -> None:
+        timestamp = datetime.now(UTC).isoformat()
+        actionable_by_key = {(item.symbol, item.profile): item for item in actionable}
+        candidates_by_key = {(item.symbol, item.profile): item for item in candidates}
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT symbol, profile, action, stop_loss, take_profit
+                FROM moex_longterm_positions
+                WHERE is_active = 1
+                """
+            ).fetchall()
+            for symbol, profile, action, stop_loss, take_profit in rows:
+                key = (str(symbol), str(profile))
+                latest = actionable_by_key.get(key) or candidates_by_key.get(key)
+                if latest is None:
+                    continue
+                current_action = str(action)
+                current_stop = float(stop_loss) if stop_loss is not None else None
+                current_take = float(take_profit) if take_profit is not None else None
+                if _should_close_longterm_position(
+                    current_action=current_action,
+                    profile=str(profile),
+                    stop_loss=current_stop,
+                    take_profit=current_take,
+                    latest=latest,
+                ):
+                    connection.execute(
+                        """
+                        UPDATE moex_longterm_positions
+                        SET is_active = 0, updated_at = ?
+                        WHERE symbol = ? AND profile = ?
+                        """,
+                        (timestamp, symbol, profile),
+                    )
+                    continue
+                next_action = current_action
+                if latest.action == current_action:
+                    next_action = latest.action
+                connection.execute(
+                    """
+                    UPDATE moex_longterm_positions
+                    SET action = ?,
+                        score = ?,
+                        confidence = ?,
+                        confirmation_count = ?,
+                        last_price = ?,
+                        stop_loss = ?,
+                        take_profit = ?,
+                        updated_at = ?,
+                        is_active = 1
+                    WHERE symbol = ? AND profile = ?
+                    """,
+                    (
+                        next_action,
+                        latest.score,
+                        latest.confidence,
+                        latest.confirmation_count,
+                        latest.last_price,
+                        latest.stop_loss if latest.stop_loss is not None else current_stop,
+                        latest.take_profit if latest.take_profit is not None else current_take,
+                        timestamp,
+                        symbol,
+                        profile,
+                    ),
+                )
             for signal in actionable:
                 row = connection.execute(
                     """
@@ -1133,20 +1225,6 @@ class MoexSignalRepository:
                         timestamp,
                     ),
                 )
-            rows = connection.execute(
-                "SELECT symbol, profile FROM moex_longterm_positions WHERE is_active = 1"
-            ).fetchall()
-            for symbol, profile in rows:
-                if (str(symbol), str(profile)) in active_keys:
-                    continue
-                connection.execute(
-                    """
-                    UPDATE moex_longterm_positions
-                    SET is_active = 0, updated_at = ?
-                    WHERE symbol = ? AND profile = ?
-                    """,
-                    (timestamp, symbol, profile),
-                )
 
     def longterm_performance_snapshot(self) -> dict[str, Any]:
         with self._connect() as connection:
@@ -1157,7 +1235,19 @@ class MoexSignalRepository:
                     COUNT(*) AS signals_count,
                     COALESCE(AVG(score), 0) AS avg_score,
                     COALESCE(AVG(confidence), 0) AS avg_confidence,
-                    COALESCE(AVG(CASE WHEN action IN ('BUY','SELL') THEN 1.0 ELSE 0.0 END), 0) AS actionable_rate
+                    COALESCE(AVG(CASE WHEN action IN ('BUY','SELL') THEN 1.0 ELSE 0.0 END), 0) AS actionable_rate,
+                    COALESCE(AVG(CASE
+                        WHEN action IN ('BUY','SELL') AND (
+                            (profile = 'swing' AND confirmation_count >= 2)
+                            OR (profile = 'position' AND confirmation_count >= 3)
+                            OR (profile NOT IN ('swing', 'position') AND confirmation_count >= 2)
+                        ) THEN 1.0 ELSE 0.0 END), 0) AS confirmed_actionable_rate,
+                    COALESCE(SUM(CASE
+                        WHEN action IN ('BUY','SELL') AND (
+                            (profile = 'swing' AND confirmation_count >= 2)
+                            OR (profile = 'position' AND confirmation_count >= 3)
+                            OR (profile NOT IN ('swing', 'position') AND confirmation_count >= 2)
+                        ) THEN 1 ELSE 0 END), 0) AS confirmed_actionable_count
                 FROM moex_longterm_signals
                 WHERE date(generated_at) >= date('now', '-30 day')
                 GROUP BY profile
@@ -1189,6 +1279,8 @@ class MoexSignalRepository:
                     "avg_score": float(row[2]),
                     "avg_confidence": float(row[3]),
                     "actionable_rate": float(row[4]),
+                    "confirmed_actionable_rate": float(row[5]),
+                    "confirmed_actionable_count": int(row[6]),
                 }
                 for row in rows_profile
             ],
@@ -1209,6 +1301,36 @@ class MoexSignalRepository:
             ],
             "active_positions_count": len(rows_positions),
         }
+
+
+def _should_close_longterm_position(
+    *,
+    current_action: str,
+    profile: str,
+    stop_loss: float | None,
+    take_profit: float | None,
+    latest: LongTermSignal,
+) -> bool:
+    if current_action not in {"BUY", "SELL"}:
+        return True
+    target = LONGTERM_CONFIRMATION_TARGETS.get(profile, 2)
+    if (
+        latest.action in {"BUY", "SELL"}
+        and latest.action != current_action
+        and latest.confirmation_count >= target
+    ):
+        return True
+    if current_action == "BUY":
+        if stop_loss is not None and latest.last_price <= stop_loss:
+            return True
+        if take_profit is not None and latest.last_price >= take_profit:
+            return True
+    else:
+        if stop_loss is not None and latest.last_price >= stop_loss:
+            return True
+        if take_profit is not None and latest.last_price <= take_profit:
+            return True
+    return False
 
 
 def _single_bet_key(recommendation: Recommendation) -> str:

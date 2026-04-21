@@ -181,7 +181,7 @@ class MoexLongTermService:
                 candles = self.client.get_daily_candles(symbol, from_date=since, till_date=until)
                 symbol_events = events_by_symbol.get(symbol, [])
                 for profile in self.profiles:
-                    previous = self.repository.get_longterm_notification_state(symbol, profile) if self.repository else None
+                    previous = self.repository.get_latest_longterm_signal(symbol, profile) if self.repository else None
                     previous_action = str(previous.get("action")) if previous else None
                     previous_score = float(previous.get("score")) if previous and previous.get("score") is not None else None
                     confirmation_count = _next_confirmation(previous, profile, previous_action_candidate=None)
@@ -210,7 +210,7 @@ class MoexLongTermService:
         actionable = self._select_actionable(candidates)
         if self.repository is not None:
             self.repository.persist_longterm_signals(candidates)
-            self.repository.refresh_longterm_positions(actionable)
+            self.repository.refresh_longterm_positions(candidates=candidates, actionable=actionable)
         if self.notifier is not None:
             sent = self._notify_signals(actionable)
             logger.info("MOEX long-term telegram notifications sent=%s", sent)
