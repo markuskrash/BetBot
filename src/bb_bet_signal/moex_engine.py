@@ -46,12 +46,16 @@ class MoexSignalEngine:
             position_share = min(self.max_position_share, base_share * 0.7)
         else:
             position_share = 0.0
+        if action in {"BUY", "SELL"} and len(events) == 0:
+            # Pure technical signals are less reliable intraday; size down without event confirmation.
+            position_share *= 0.65
 
-        stop_loss, take_profit = _risk_levels(
+        stop_loss, take_profit, take_profit_extended = _risk_levels(
             action=action,
             last_price=quote.last,
             daily_vol=daily_vol,
             confidence=confidence,
+            expected_move_pct=expected_move_pct,
         )
 
         reasons = technical_reasons + event_reasons
@@ -72,6 +76,7 @@ class MoexSignalEngine:
             generated_at=datetime.now(UTC),
             stop_loss=stop_loss,
             take_profit=take_profit,
+            take_profit_extended=take_profit_extended,
             reasons=reasons[:5],
         )
 
@@ -189,23 +194,29 @@ def _risk_levels(
     last_price: float,
     daily_vol: float,
     confidence: float,
-) -> tuple[float | None, float | None]:
+    expected_move_pct: float,
+) -> tuple[float | None, float | None, float | None]:
     if action not in {"BUY", "SELL"} or last_price <= 0:
-        return None, None
+        return None, None, None
 
-    # Volatility-aware stop and RR-based target.
+    # Volatility-aware stop + conservative TP anchored to expected move.
     base_stop = _clamp(daily_vol * 2.2, 0.012, 0.08)
     confidence_adjustment = 1.0 - _clamp(confidence - 0.5, 0.0, 0.4) * 0.35
     stop_pct = _clamp(base_stop * confidence_adjustment, 0.01, 0.08)
-    take_pct = _clamp(stop_pct * 1.85, 0.02, 0.16)
+    legacy_take_pct = _clamp(stop_pct * 1.85, 0.02, 0.16)
+    expected_abs = max(abs(expected_move_pct), 0.008)
+    primary_take_pct = min(legacy_take_pct, _clamp(expected_abs * 0.8, 0.01, 0.06))
+    extended_take_pct = min(legacy_take_pct, _clamp(expected_abs * 1.35, primary_take_pct, 0.12))
 
     if action == "BUY":
         stop_loss = last_price * (1.0 - stop_pct)
-        take_profit = last_price * (1.0 + take_pct)
+        take_profit = last_price * (1.0 + primary_take_pct)
+        take_profit_extended = last_price * (1.0 + extended_take_pct)
     else:
         stop_loss = last_price * (1.0 + stop_pct)
-        take_profit = last_price * (1.0 - take_pct)
-    return round(stop_loss, 2), round(take_profit, 2)
+        take_profit = last_price * (1.0 - primary_take_pct)
+        take_profit_extended = last_price * (1.0 - extended_take_pct)
+    return round(stop_loss, 2), round(take_profit, 2), round(take_profit_extended, 2)
 
 
 def _clamp(value: float, low: float, high: float) -> float:

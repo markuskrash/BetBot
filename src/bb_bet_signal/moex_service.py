@@ -181,13 +181,20 @@ class MoexStockService:
             generated_at=generated_at,
             stop_loss=float(state["stop_loss"]) if state.get("stop_loss") is not None else None,
             take_profit=float(state["take_profit"]) if state.get("take_profit") is not None else None,
+            take_profit_extended=None,
             reasons=[],
         )
 
 
 def _format_stock_signal(signal: MoexSignal) -> str:
     stop_line = f"Stop loss: {signal.stop_loss:.2f}" if signal.stop_loss is not None else "Stop loss: n/a"
-    take_line = f"Take profit: {signal.take_profit:.2f}" if signal.take_profit is not None else "Take profit: n/a"
+    take_line = f"Take profit (TP1): {signal.take_profit:.2f}" if signal.take_profit is not None else "Take profit (TP1): n/a"
+    take_ext_line = (
+        f"Take profit (TP2): {signal.take_profit_extended:.2f}"
+        if signal.take_profit_extended is not None
+        else "Take profit (TP2): n/a"
+    )
+    reach_line = _take_reach_line(signal)
     return "\n".join(
         [
             f"MOEX {signal.symbol}: {signal.action}",
@@ -198,6 +205,8 @@ def _format_stock_signal(signal: MoexSignal) -> str:
             f"Position: {signal.position_share:.2%}",
             stop_line,
             take_line,
+            take_ext_line,
+            reach_line,
             f"Events used: {signal.event_count}",
         ]
     )
@@ -231,3 +240,13 @@ def _relative_change(previous: float | None, current: float | None) -> float:
     if previous is None or current is None:
         return 1.0 if previous != current else 0.0
     return abs(current - previous) / max(abs(previous), 1e-6)
+
+
+def _take_reach_line(signal: MoexSignal) -> str:
+    if signal.take_profit is None or signal.last_price <= 0:
+        return "TP1 reach ratio: n/a"
+    expected_abs = abs(signal.expected_move_pct)
+    if expected_abs <= 1e-6:
+        return "TP1 reach ratio: n/a"
+    tp_distance = abs(signal.take_profit - signal.last_price) / signal.last_price
+    return f"TP1 reach ratio: {tp_distance / expected_abs:.2f}x"

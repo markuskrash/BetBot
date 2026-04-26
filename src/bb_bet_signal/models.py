@@ -159,6 +159,7 @@ class MoexSignal:
     generated_at: datetime
     stop_loss: float | None = None
     take_profit: float | None = None
+    take_profit_extended: float | None = None
     reasons: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
